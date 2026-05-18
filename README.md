@@ -156,3 +156,37 @@ Before contributing, read:
 ## Project Status
 
 Heard is early-stage software. APIs, schemas, and architecture may change before the first stable release.
+
+## Local Run
+
+Heard is implemented as a Docker-first vertical slice with:
+
+- `db`: PostgreSQL
+- `api`: Go API server
+- `worker`: Go outbox worker
+- `web`: Next.js guest/admin app
+
+Start it locally:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+- `http://localhost:3010` for the web app
+- `http://localhost:3010/admin/campaigns` to create a printed flyer survey campaign
+- `http://localhost:3010/f/demo-heard` for the seeded flyer survey flow
+- `http://localhost:3010/admin/recovery` for the manager recovery inbox
+
+Default seeded tenant header:
+
+```text
+11111111-1111-1111-1111-111111111111
+```
+
+Reference docs:
+
+- [Slice 1 implementation](./docs/slice1.md)
+- [Slice 2 implementation](./docs/slice2.md)
+- [Slice 1 OpenAPI contract](./docs/openapi.slice1.yaml)

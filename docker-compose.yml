@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: heard
+      POSTGRES_USER: heard
+      POSTGRES_PASSWORD: heard
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heard -d heard"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5432:5432"
+    volumes:
+      - heard-postgres:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./backend
+      target: api
+    environment:
+      APP_ENV: docker
+      APP_PORT: "8080"
+      DATABASE_URL: postgres://heard:heard@db:5432/heard?sslmode=disable
+      PUBLIC_APP_URL: http://localhost:3010
+      WEB_BASE_URL: http://localhost:3010
+      ALLOWED_ORIGIN: http://localhost:3010
+      HEARD_SEED_DEMO: "true"
+      QURL_BASE_URL: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  worker:
+    build:
+      context: ./backend
+      target: worker
+    environment:
+      APP_ENV: docker
+      DATABASE_URL: postgres://heard:heard@db:5432/heard?sslmode=disable
+      PUBLIC_APP_URL: http://localhost:3010
+      WEB_BASE_URL: http://localhost:3010
+      HEARD_SEED_DEMO: "true"
+      WORKER_POLL_INTERVAL_MS: "1200"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_DEMO_TENANT_ID: 11111111-1111-1111-1111-111111111111
+    depends_on:
+      - api
+    ports:
+      - "3010:3010"
+
+volumes:
+  heard-postgres:

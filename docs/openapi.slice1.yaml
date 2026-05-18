@@ -1,0 +1,431 @@
+openapi: 3.1.0
+info:
+  title: Heard Slice 1 API
+  version: 0.1.0
+  description: >
+    First vertical slice for Heard covering tenant/location setup, tokenized
+    feedback links, guest feedback submission, transactional outbox events,
+    and recovery case inbox APIs.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+  /api/v1/tenants:
+    post:
+      summary: Create tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantRequest"
+      responses:
+        "201":
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+  /api/v1/tenants/{id}:
+    get:
+      summary: Get tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+  /api/v1/locations:
+    post:
+      summary: Create location
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLocationRequest"
+      responses:
+        "201":
+          description: Location created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+  /api/v1/locations/{id}:
+    get:
+      summary: Get location
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/LocationId"
+      responses:
+        "200":
+          description: Location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Location"
+  /api/v1/feedback-links:
+    post:
+      summary: Create feedback link
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFeedbackLinkRequest"
+      responses:
+        "201":
+          description: Feedback link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackLink"
+  /api/v1/feedback-links/{id}/qr:
+    post:
+      summary: Regenerate QR for feedback link
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/FeedbackLinkId"
+      responses:
+        "200":
+          description: Feedback link with QR payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackLink"
+  /api/v1/feedback-links/resolve/{token}:
+    get:
+      summary: Resolve feedback link token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolved feedback link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackLink"
+  /api/v1/feedback-sessions:
+    post:
+      summary: Create feedback session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFeedbackSessionRequest"
+      responses:
+        "201":
+          description: Feedback session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackSession"
+  /api/v1/feedback-responses:
+    get:
+      summary: List feedback responses
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Feedback response collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FeedbackResponse"
+    post:
+      summary: Submit feedback response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitFeedbackRequest"
+      responses:
+        "201":
+          description: Feedback response created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackResponse"
+  /api/v1/feedback-responses/{id}:
+    get:
+      summary: Get feedback response
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Feedback response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackResponse"
+  /api/v1/recovery-cases:
+    get:
+      summary: List recovery cases
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Recovery case collection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecoveryCase"
+  /api/v1/recovery-cases/{id}:
+    get:
+      summary: Get recovery case
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Recovery case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCase"
+    patch:
+      summary: Update recovery case status
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecoveryCaseRequest"
+      responses:
+        "200":
+          description: Recovery case updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCase"
+components:
+  parameters:
+    TenantHeader:
+      name: X-Heard-Tenant-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TenantId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LocationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FeedbackLinkId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Tenant:
+      type: object
+      required: [id, name, slug, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        created_at: { type: string, format: date-time }
+    Location:
+      type: object
+      required: [id, tenant_id, name, slug, timezone, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        timezone: { type: string }
+        created_at: { type: string, format: date-time }
+    FeedbackLink:
+      type: object
+      required: [id, tenant_id, location_id, name, token, status, channel, qr_asset_url, destination_url, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        name: { type: string }
+        token: { type: string }
+        status: { type: string }
+        channel: { type: string }
+        qr_asset_url: { type: string }
+        qr_svg: { type: string }
+        destination_url: { type: string }
+        created_at: { type: string, format: date-time }
+    FeedbackSession:
+      type: object
+      required: [id, tenant_id, location_id, status, source, channel, wants_follow_up, contact_consent, marketing_consent, metadata, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        feedback_link_id: { type: string, format: uuid }
+        status: { type: string }
+        source: { type: string }
+        channel: { type: string }
+        guest_name: { type: string }
+        guest_phone: { type: string }
+        guest_email: { type: string }
+        wants_follow_up: { type: boolean }
+        contact_consent: { type: boolean }
+        marketing_consent: { type: boolean }
+        metadata: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+    FeedbackResponse:
+      type: object
+      required: [id, tenant_id, location_id, feedback_session_id, rating, sentiment, comment, categories, wants_follow_up, contact_consent, marketing_consent, metadata, submitted_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        feedback_session_id: { type: string, format: uuid }
+        feedback_link_id: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        sentiment: { type: string, enum: [negative, neutral, positive] }
+        comment: { type: string }
+        categories:
+          type: array
+          items: { type: string }
+        guest_name: { type: string }
+        guest_phone: { type: string }
+        guest_email: { type: string }
+        wants_follow_up: { type: boolean }
+        contact_consent: { type: boolean }
+        marketing_consent: { type: boolean }
+        metadata: { type: object, additionalProperties: true }
+        submitted_at: { type: string, format: date-time }
+    RecoveryCase:
+      type: object
+      required: [id, tenant_id, location_id, feedback_response_id, status, priority, sentiment, rating, feedback_preview, created_reason, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        feedback_response_id: { type: string, format: uuid }
+        status: { type: string }
+        priority: { type: string }
+        sentiment: { type: string }
+        rating: { type: integer }
+        guest_name: { type: string }
+        guest_phone: { type: string }
+        guest_email: { type: string }
+        feedback_preview: { type: string }
+        created_reason: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+    CreateLocationRequest:
+      type: object
+      required: [tenant_id, name]
+      properties:
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        timezone: { type: string }
+    CreateFeedbackLinkRequest:
+      type: object
+      required: [tenant_id, location_id]
+      properties:
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        name: { type: string }
+        channel: { type: string }
+    CreateFeedbackSessionRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+        channel: { type: string }
+        guest_name: { type: string }
+        guest_phone: { type: string }
+        guest_email: { type: string }
+        wants_follow_up: { type: boolean }
+        contact_consent: { type: boolean }
+        marketing_consent: { type: boolean }
+        metadata: { type: object, additionalProperties: true }
+    SubmitFeedbackRequest:
+      type: object
+      required: [feedback_session_id, rating]
+      properties:
+        feedback_session_id: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+        categories:
+          type: array
+          items: { type: string }
+        guest_name: { type: string }
+        guest_phone: { type: string }
+        guest_email: { type: string }
+        wants_follow_up: { type: boolean }
+        contact_consent: { type: boolean }
+        marketing_consent: { type: boolean }
+        metadata: { type: object, additionalProperties: true }
+    UpdateRecoveryCaseRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [new, open, assigned, waiting_on_guest, waiting_on_internal_action, offer_pending, resolved, closed, spam, duplicate, archived]
