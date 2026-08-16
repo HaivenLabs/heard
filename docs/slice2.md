@@ -15,8 +15,8 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 5. Guest taps one of five faces to rate the experience from 1 to 5.
 6. Ratings 1 through 4 collect feedback and contact information before completion.
 7. Ratings 1 through 4 create a recovery case.
-8. Rating 5 prompts Google and Yelp review links first.
-9. Rating 5 then collects contact information for the giveaway entry.
+8. Rating 5 shows a thank-you using the selected face and offers optional Google and Yelp review links.
+9. Review links and contact information appear on the same final step before one submission.
 
 ## Rules
 
@@ -28,6 +28,10 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 - Marketing consent is separate from transactional follow-up.
 - Public review prompting only happens after a 5 rating.
 - Anything below 5 is follow-up required.
+- Guests can change their rating before submission without losing entered details.
+- Guest-facing copy describes the selected feeling and does not expose an internal numeric score.
+- Email and phone formats are validated in both the browser and API.
+- The highest-rating face is a warm, restrained delighted expression with no tongue or heart eyes.
 
 ## Implemented surfaces
 

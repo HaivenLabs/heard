@@ -1,24 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { apiFetch, DEMO_TENANT_ID, FeedbackResponse, RecoveryCase, formatRelativeDate } from "../../../lib/api";
+import { AdminShell } from "../../../components/admin-shell";
+import { AuthGate } from "../../../components/auth-gate";
+import { apiFetch, FeedbackResponse, RecoveryCase, Session, formatRelativeDate } from "../../../lib/api";
 
 const STATUS_OPTIONS = ["new", "open", "assigned", "waiting_on_guest", "resolved", "closed"] as const;
 
 export default function RecoveryPage() {
-  const [tenantId, setTenantId] = useState(DEMO_TENANT_ID);
+  return <AuthGate>{(session) => <RecoveryInbox session={session} />}</AuthGate>;
+}
+
+function RecoveryInbox({ session }: { session: Session }) {
+  const tenantId = session.tenant_id;
   const [cases, setCases] = useState<RecoveryCase[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [response, setResponse] = useState<FeedbackResponse | null>(null);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    const storedTenantId = window.localStorage.getItem("heard-tenant-id");
-    if (storedTenantId) {
-      setTenantId(storedTenantId);
-    }
-  }, []);
 
   useEffect(() => {
     startTransition(() => {
@@ -73,17 +72,15 @@ export default function RecoveryPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fbf6ef] px-6 py-10 text-ink">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <AdminShell session={session}>
+      <main className="px-5 py-10 text-ink sm:py-14">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="font-display text-xs uppercase tracking-[0.32em] text-clay">Recovery inbox</p>
-            <h1 className="mt-4 font-display text-4xl">Negative feedback lands here after the worker clears the outbox.</h1>
+              <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">Recovery inbox</p>
+              <h1 className="mt-4 max-w-4xl font-display text-4xl tracking-[-0.05em] sm:text-5xl">Know who needs a human response.</h1>
+              <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-ink/55">Every rough visit arrives with the guest&apos;s words, contact details, and enough context for your team to make the next move.</p>
           </div>
-          <label className="rounded-full border border-ink/10 bg-white px-4 py-3 shadow-soft">
-            <span className="mb-2 block font-body text-xs uppercase tracking-[0.22em] text-ink/50">Tenant header</span>
-            <input className="w-72 bg-transparent font-mono text-xs outline-none" onChange={(event) => setTenantId(event.target.value)} value={tenantId} />
-          </label>
         </div>
 
         {error ? <div className="mb-6 rounded-3xl border border-red-300 bg-red-50 px-5 py-4 font-body text-sm text-red-700">{error}</div> : null}
@@ -171,8 +168,9 @@ export default function RecoveryPage() {
             {isPending ? <p className="mt-4 font-body text-xs uppercase tracking-[0.2em] text-parchment/50">Refreshing cases...</p> : null}
           </section>
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </AdminShell>
   );
 }
 

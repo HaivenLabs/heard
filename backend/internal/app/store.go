@@ -56,8 +56,8 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 	}
 	if _, err := s.pool.Exec(ctx, `
 		insert into locations (id, tenant_id, name, slug, timezone)
-		values ($1, $2, 'Nom - Takeout', 'nom-takeout', 'America/Los_Angeles')
-		on conflict (id) do nothing
+		values ($1, $2, 'nom - Takeout', 'nom-takeout', 'America/Los_Angeles')
+		on conflict (id) do update set name = excluded.name
 	`, demoLocationID, demoTenantID); err != nil {
 		return err
 	}
@@ -67,12 +67,16 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 			sms_keyword, sms_phone, google_review_url, yelp_review_url, status
 		)
 		values (
-			$1, $2, $3, 'Takeout bag gift card survey', 'Nom', 'How did we do?',
-			'Tap the face that matches your visit.', 'Complete this survey for a chance to win a $100 Nom gift card.',
+			$1, $2, $3, 'Takeout bag gift card survey', 'nom', 'How did we do?',
+			'Tap the face that matches your visit.', 'Complete this survey for a chance to win a $100 nom gift card.',
 			'WIN', '(877) 426-0492', 'https://www.google.com/maps/search/?api=1&query=Nom+restaurant',
 			'https://www.yelp.com/search?find_desc=Nom', 'active'
 		)
-		on conflict (id) do nothing
+		on conflict (id) do update set
+			restaurant_name = excluded.restaurant_name,
+			headline = excluded.headline,
+			prompt = excluded.prompt,
+			incentive_text = excluded.incentive_text
 	`, demoCampaignID, demoTenantID, demoLocationID); err != nil {
 		return err
 	}
@@ -87,6 +91,42 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 			qr_svg = excluded.qr_svg
 	`, demoFeedbackLinkID, demoTenantID, demoLocationID, demoCampaignID, strings.TrimRight(s.cfg.WebBaseURL, "/")+"/f/demo-heard", "")
 	return err
+}
+
+func (s *Store) CreateMarketingLead(ctx context.Context, req createMarketingLeadRequest) (MarketingLead, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	req.WorkEmail = strings.ToLower(strings.TrimSpace(req.WorkEmail))
+	req.Phone = strings.TrimSpace(req.Phone)
+	req.RestaurantName = strings.TrimSpace(req.RestaurantName)
+	req.LocationCount = strings.TrimSpace(req.LocationCount)
+	req.Challenge = strings.TrimSpace(req.Challenge)
+	req.Source = defaultString(req.Source, "marketing_site")
+	if err := validateMarketingLeadRequest(req); err != nil {
+		return MarketingLead{}, err
+	}
+
+	lead := MarketingLead{
+		ID:             uuid.NewString(),
+		Name:           req.Name,
+		WorkEmail:      req.WorkEmail,
+		Phone:          req.Phone,
+		RestaurantName: req.RestaurantName,
+		LocationCount:  req.LocationCount,
+		Challenge:      req.Challenge,
+		Source:         req.Source,
+		ContactConsent: req.ContactConsent,
+		Status:         "new",
+	}
+	if err := s.pool.QueryRow(ctx, `
+		insert into marketing_leads (
+			id, name, work_email, phone, restaurant_name, location_count, challenge, source, contact_consent, status
+		)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		returning created_at
+	`, lead.ID, lead.Name, lead.WorkEmail, lead.Phone, lead.RestaurantName, lead.LocationCount, lead.Challenge, lead.Source, lead.ContactConsent, lead.Status).Scan(&lead.CreatedAt); err != nil {
+		return MarketingLead{}, err
+	}
+	return lead, nil
 }
 
 func (s *Store) CreateTenant(ctx context.Context, actorID, actorRole string, req createTenantRequest) (Tenant, error) {
@@ -192,7 +232,7 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 		TenantID:        tenantID,
 		LocationID:      req.LocationID,
 		Name:            defaultString(strings.TrimSpace(req.Name), "Takeout flyer survey"),
-		RestaurantName:  defaultString(strings.TrimSpace(req.RestaurantName), "Nom"),
+		RestaurantName:  defaultString(strings.TrimSpace(req.RestaurantName), "nom"),
 		Headline:        defaultString(strings.TrimSpace(req.Headline), "How did we do?"),
 		Prompt:          defaultString(strings.TrimSpace(req.Prompt), "Tap the face that matches your visit."),
 		IncentiveText:   defaultString(strings.TrimSpace(req.IncentiveText), "Complete this survey for a chance to win a $100 gift card."),
@@ -410,6 +450,9 @@ func (s *Store) CreateFeedbackSession(ctx context.Context, req createFeedbackSes
 		MarketingConsent: req.MarketingConsent,
 		Metadata:         defaultMetadata(req.Metadata),
 	}
+	if err := validateContactDetails(session.GuestEmail, session.GuestPhone, false); err != nil {
+		return FeedbackSession{}, err
+	}
 
 	metadata, err := json.Marshal(session.Metadata)
 	if err != nil {
@@ -503,6 +546,10 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 		Metadata:          mergeMetadata(session.Metadata, req.Metadata),
 		SubmittedAt:       time.Now().UTC(),
 	}
+	requiresContact := response.Metadata["campaign_type"] == "flyer_giveaway"
+	if err := validateContactDetails(response.GuestEmail, response.GuestPhone, requiresContact); err != nil {
+		return FeedbackResponse{}, err
+	}
 
 	categoriesJSON, err := json.Marshal(response.Categories)
 	if err != nil {
@@ -512,14 +559,22 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 	if err != nil {
 		return FeedbackResponse{}, err
 	}
+	feedbackLinkID, err := nullableUUID(response.FeedbackLinkID)
+	if err != nil {
+		return FeedbackResponse{}, err
+	}
+	experienceID, err := nullableUUID(response.ExperienceID)
+	if err != nil {
+		return FeedbackResponse{}, err
+	}
 
 	if _, err := tx.Exec(ctx, `
 		insert into feedback_responses (
 			id, tenant_id, location_id, feedback_session_id, feedback_link_id, experience_id, rating, sentiment, comment,
 			categories, guest_name, guest_phone, guest_email, wants_follow_up, contact_consent, marketing_consent, metadata, submitted_at
 		)
-		values ($1, $2, $3, $4, nullif($5, ''), nullif($6, ''), $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-	`, response.ID, response.TenantID, response.LocationID, response.FeedbackSessionID, response.FeedbackLinkID, response.ExperienceID,
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+	`, response.ID, response.TenantID, response.LocationID, response.FeedbackSessionID, feedbackLinkID, experienceID,
 		response.Rating, response.Sentiment, response.Comment, categoriesJSON, response.GuestName, response.GuestPhone, response.GuestEmail,
 		response.WantsFollowUp, response.ContactConsent, response.MarketingConsent, metadata, response.SubmittedAt,
 	); err != nil {
@@ -574,6 +629,18 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 		return FeedbackResponse{}, err
 	}
 	return response, nil
+}
+
+func nullableUUID(value string) (*uuid.UUID, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid UUID %q: %w", value, err)
+	}
+	return &parsed, nil
 }
 
 func (s *Store) ListFeedbackResponses(ctx context.Context, tenantID string) ([]FeedbackResponse, error) {

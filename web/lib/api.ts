@@ -5,6 +5,20 @@ export type Tenant = {
   created_at: string;
 };
 
+export type MarketingLead = {
+  id: string;
+  name: string;
+  work_email: string;
+  phone: string;
+  restaurant_name: string;
+  location_count: string;
+  challenge: string;
+  source: "marketing_site" | "guest_demo";
+  contact_consent: true;
+  status: "new";
+  created_at: string;
+};
+
 export type Location = {
   id: string;
   tenant_id: string;
@@ -107,23 +121,74 @@ export type RecoveryCase = {
   updated_at: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+export type Identity = {
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  tenant_ids: string[];
+  permissions: string[];
+  provider: string;
+};
+
+export type Session = {
+  access_token: string;
+  expires_at: string;
+  identity: Identity;
+  tenant_id: string;
+};
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 export const DEMO_TENANT_ID = process.env.NEXT_PUBLIC_DEMO_TENANT_ID ?? "11111111-1111-1111-1111-111111111111";
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;
   tenantId?: string;
+  auth?: boolean;
 };
 
+const SESSION_STORAGE_KEY = "heard-session-v1";
+
+export function getStoredSession(): Session | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const session = JSON.parse(raw) as Session;
+    if (!session.access_token || new Date(session.expires_at).getTime() <= Date.now()) {
+      clearStoredSession();
+      return null;
+    }
+    return session;
+  } catch {
+    clearStoredSession();
+    return null;
+  }
+}
+
+export function storeSession(session: Session) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+export function clearStoredSession() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const session = options.auth === false ? null : getStoredSession();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
-      ...(options.tenantId ? { "X-Heard-Tenant-ID": options.tenantId } : {}),
-      ...(options.tenantId ? { "X-Heard-Actor-ID": "web-admin" } : {}),
-      ...(options.tenantId ? { "X-Heard-Actor-Role": "admin" } : {})
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(options.tenantId ? { "X-Heard-Tenant-ID": options.tenantId } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
     cache: "no-store"
@@ -131,10 +196,25 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    if (response.status === 401 && options.auth !== false && typeof window !== "undefined") {
+      clearStoredSession();
+      const next = window.location.pathname.startsWith("/admin") ? window.location.pathname : "/admin";
+      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+    }
     throw new Error(payload?.error?.message ?? `Request failed with ${response.status}`);
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function createLocalSession(email: string): Promise<Session> {
+  const session = await apiFetch<Session>("/api/v1/auth/local/session", {
+    method: "POST",
+    auth: false,
+    body: { email }
+  });
+  storeSession(session);
+  return session;
 }
 
 export function formatRelativeDate(value: string): string {

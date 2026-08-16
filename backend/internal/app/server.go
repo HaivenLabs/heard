@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -10,8 +11,24 @@ import (
 )
 
 type Server struct {
-	cfg   Config
-	store *Store
+	cfg      Config
+	store    *Store
+	identity IdentityProvider
+}
+
+type createLocalSessionRequest struct {
+	Email string `json:"email"`
+}
+
+type createMarketingLeadRequest struct {
+	Name           string `json:"name"`
+	WorkEmail      string `json:"work_email"`
+	Phone          string `json:"phone"`
+	RestaurantName string `json:"restaurant_name"`
+	LocationCount  string `json:"location_count"`
+	Challenge      string `json:"challenge"`
+	Source         string `json:"source"`
+	ContactConsent bool   `json:"contact_consent"`
 }
 
 type createTenantRequest struct {
@@ -83,34 +100,38 @@ type actorContext struct {
 	TenantID  string
 	ActorID   string
 	ActorRole string
+	Identity  Identity
 }
 
-func NewServer(cfg Config, store *Store) *Server {
-	return &Server{cfg: cfg, store: store}
+func NewServer(cfg Config, store *Store, identity IdentityProvider) *Server {
+	return &Server{cfg: cfg, store: store, identity: identity}
 }
 
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/healthz", s.handleHealth)
-	mux.HandleFunc("POST /api/v1/tenants", s.handleCreateTenant)
-	mux.HandleFunc("GET /api/v1/tenants/{id}", s.withAdminContext(s.handleGetTenant))
-	mux.HandleFunc("GET /api/v1/locations", s.withAdminContext(s.handleListLocations))
-	mux.HandleFunc("POST /api/v1/locations", s.withAdminContext(s.handleCreateLocation))
-	mux.HandleFunc("GET /api/v1/locations/{id}", s.withAdminContext(s.handleGetLocation))
-	mux.HandleFunc("GET /api/v1/survey-campaigns", s.withAdminContext(s.handleListSurveyCampaigns))
-	mux.HandleFunc("POST /api/v1/survey-campaigns", s.withAdminContext(s.handleCreateSurveyCampaign))
-	mux.HandleFunc("GET /api/v1/survey-campaigns/{id}", s.withAdminContext(s.handleGetSurveyCampaign))
+	mux.HandleFunc("POST /api/v1/marketing-leads", s.handleCreateMarketingLead)
+	mux.HandleFunc("POST /api/v1/auth/local/session", s.handleCreateLocalSession)
+	mux.HandleFunc("GET /api/v1/session", s.withIdentity("", s.handleGetSession))
+	mux.HandleFunc("POST /api/v1/tenants", s.withIdentity("tenant:create", s.handleCreateTenant))
+	mux.HandleFunc("GET /api/v1/tenants/{id}", s.withAdminContext("tenant:read", s.handleGetTenant))
+	mux.HandleFunc("GET /api/v1/locations", s.withAdminContext("location:read", s.handleListLocations))
+	mux.HandleFunc("POST /api/v1/locations", s.withAdminContext("location:write", s.handleCreateLocation))
+	mux.HandleFunc("GET /api/v1/locations/{id}", s.withAdminContext("location:read", s.handleGetLocation))
+	mux.HandleFunc("GET /api/v1/survey-campaigns", s.withAdminContext("campaign:read", s.handleListSurveyCampaigns))
+	mux.HandleFunc("POST /api/v1/survey-campaigns", s.withAdminContext("campaign:write", s.handleCreateSurveyCampaign))
+	mux.HandleFunc("GET /api/v1/survey-campaigns/{id}", s.withAdminContext("campaign:read", s.handleGetSurveyCampaign))
 	mux.HandleFunc("GET /api/v1/public/surveys/{token}", s.handlePublicSurvey)
-	mux.HandleFunc("POST /api/v1/feedback-links", s.withAdminContext(s.handleCreateFeedbackLink))
-	mux.HandleFunc("POST /api/v1/feedback-links/{id}/qr", s.withAdminContext(s.handleGenerateQR))
+	mux.HandleFunc("POST /api/v1/feedback-links", s.withAdminContext("campaign:write", s.handleCreateFeedbackLink))
+	mux.HandleFunc("POST /api/v1/feedback-links/{id}/qr", s.withAdminContext("campaign:write", s.handleGenerateQR))
 	mux.HandleFunc("GET /api/v1/feedback-links/resolve/{token}", s.handleResolveFeedbackLink)
 	mux.HandleFunc("POST /api/v1/feedback-sessions", s.handleCreateFeedbackSession)
 	mux.HandleFunc("POST /api/v1/feedback-responses", s.handleSubmitFeedback)
-	mux.HandleFunc("GET /api/v1/feedback-responses", s.withAdminContext(s.handleListFeedbackResponses))
-	mux.HandleFunc("GET /api/v1/feedback-responses/{id}", s.withAdminContext(s.handleGetFeedbackResponse))
-	mux.HandleFunc("GET /api/v1/recovery-cases", s.withAdminContext(s.handleListRecoveryCases))
-	mux.HandleFunc("GET /api/v1/recovery-cases/{id}", s.withAdminContext(s.handleGetRecoveryCase))
-	mux.HandleFunc("PATCH /api/v1/recovery-cases/{id}", s.withAdminContext(s.handleUpdateRecoveryCase))
+	mux.HandleFunc("GET /api/v1/feedback-responses", s.withAdminContext("recovery:read", s.handleListFeedbackResponses))
+	mux.HandleFunc("GET /api/v1/feedback-responses/{id}", s.withAdminContext("recovery:read", s.handleGetFeedbackResponse))
+	mux.HandleFunc("GET /api/v1/recovery-cases", s.withAdminContext("recovery:read", s.handleListRecoveryCases))
+	mux.HandleFunc("GET /api/v1/recovery-cases/{id}", s.withAdminContext("recovery:read", s.handleGetRecoveryCase))
+	mux.HandleFunc("PATCH /api/v1/recovery-cases/{id}", s.withAdminContext("recovery:write", s.handleUpdateRecoveryCase))
 	return s.withCORS(mux)
 }
 
@@ -121,7 +142,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			origin = "*"
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Heard-Tenant-ID, X-Heard-Actor-ID, X-Heard-Actor-Role")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Heard-Tenant-ID")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -131,33 +152,93 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) withAdminContext(next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
+func (s *Server) withIdentity(permission string, next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := actorContext{
-			TenantID:  strings.TrimSpace(r.Header.Get("X-Heard-Tenant-ID")),
-			ActorID:   defaultString(strings.TrimSpace(r.Header.Get("X-Heard-Actor-ID")), "local-admin"),
-			ActorRole: defaultString(strings.TrimSpace(r.Header.Get("X-Heard-Actor-Role")), "admin"),
+		token, ok := bearerToken(r.Header.Get("Authorization"))
+		if !ok || s.identity == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
 		}
+		identity, err := s.identity.VerifyToken(r.Context(), token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		if permission != "" && !identity.HasPermission(permission) {
+			log.Printf("authorization denied actor_id=%s permission=%s path=%s", identity.UserID, permission, r.URL.Path)
+			writeError(w, http.StatusForbidden, "permission denied")
+			return
+		}
+		next(w, r, actorContext{ActorID: identity.UserID, ActorRole: identity.Role, Identity: identity})
+	}
+}
 
-		if ctx.TenantID == "" && r.Pattern != "GET /api/v1/tenants/{id}" {
+func (s *Server) withAdminContext(permission string, next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
+	return s.withIdentity(permission, func(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+		ctx.TenantID = strings.TrimSpace(r.Header.Get("X-Heard-Tenant-ID"))
+		if ctx.TenantID == "" {
 			writeError(w, http.StatusUnauthorized, "tenant context is required")
 			return
 		}
+		if !ctx.Identity.HasTenant(ctx.TenantID) {
+			log.Printf("tenant access denied actor_id=%s tenant_id=%s path=%s", ctx.ActorID, ctx.TenantID, r.URL.Path)
+			writeError(w, http.StatusForbidden, "tenant access denied")
+			return
+		}
 		next(w, r, ctx)
-	}
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateMarketingLead(w http.ResponseWriter, r *http.Request) {
+	var req createMarketingLeadRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	lead, err := s.store.CreateMarketingLead(r.Context(), req)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	log.Printf("marketing lead created lead_id=%s source=%s location_count=%s", lead.ID, lead.Source, lead.LocationCount)
+	writeJSON(w, http.StatusCreated, lead)
+}
+
+func (s *Server) handleCreateLocalSession(w http.ResponseWriter, r *http.Request) {
+	issuer, ok := s.identity.(localSessionIssuer)
+	if !ok {
+		writeError(w, http.StatusNotFound, "local Passage adapter is disabled")
+		return
+	}
+	var req createLocalSessionRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	session, err := issuer.IssueSession(req.Email)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("local Passage session issued actor_id=%s tenant_id=%s", session.Identity.UserID, session.TenantID)
+	writeJSON(w, http.StatusCreated, session)
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, _ *http.Request, ctx actorContext) {
+	writeJSON(w, http.StatusOK, ctx.Identity)
+}
+
+func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request, ctx actorContext) {
 	var req createTenantRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	tenant, err := s.store.CreateTenant(r.Context(), "local-admin", "admin", req)
+	tenant, err := s.store.CreateTenant(r.Context(), ctx.ActorID, ctx.ActorRole, req)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -198,7 +279,7 @@ func (s *Server) handleListLocations(w http.ResponseWriter, r *http.Request, ctx
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": locations})
+	writeJSON(w, http.StatusOK, collectionPayload(locations))
 }
 
 func (s *Server) handleGetLocation(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -230,7 +311,7 @@ func (s *Server) handleListSurveyCampaigns(w http.ResponseWriter, r *http.Reques
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": campaigns})
+	writeJSON(w, http.StatusOK, collectionPayload(campaigns))
 }
 
 func (s *Server) handleGetSurveyCampaign(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -317,7 +398,7 @@ func (s *Server) handleListFeedbackResponses(w http.ResponseWriter, r *http.Requ
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, collectionPayload(items))
 }
 
 func (s *Server) handleGetFeedbackResponse(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -335,7 +416,7 @@ func (s *Server) handleListRecoveryCases(w http.ResponseWriter, r *http.Request,
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, collectionPayload(items))
 }
 
 func (s *Server) handleGetRecoveryCase(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -372,6 +453,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		writeError(w, http.StatusNotFound, "resource not found")
+	case errors.Is(err, errValidation):
+		writeError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), errValidation.Error()+": "))
 	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "already"):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
@@ -392,4 +475,19 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func bearerToken(authorization string) (string, bool) {
+	scheme, token, ok := strings.Cut(strings.TrimSpace(authorization), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(token), true
+}
+
+func collectionPayload[T any](items []T) map[string]any {
+	if items == nil {
+		items = []T{}
+	}
+	return map[string]any{"items": items}
 }

@@ -5,10 +5,11 @@
     "dev": "next dev --hostname 0.0.0.0 --port 3010",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 3010",
-    "lint": "next lint"
+    "lint": "tsc --noEmit",
+    "test": "node scripts/check-rating-face-usage.mjs && node scripts/check-admin-shell-usage.mjs"
   },
   "dependencies": {
-    "next": "15.3.8",
+    "next": "16.3.1",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
@@ -17,7 +18,7 @@
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.5",
     "autoprefixer": "10.4.21",
-    "postcss": "8.5.4",
+    "postcss": "8.5.26",
     "tailwindcss": "3.4.17",
     "typescript": "5.8.3"
   }

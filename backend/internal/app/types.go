@@ -9,6 +9,20 @@ type Tenant struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type MarketingLead struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	WorkEmail      string    `json:"work_email"`
+	Phone          string    `json:"phone"`
+	RestaurantName string    `json:"restaurant_name"`
+	LocationCount  string    `json:"location_count"`
+	Challenge      string    `json:"challenge"`
+	Source         string    `json:"source"`
+	ContactConsent bool      `json:"contact_consent"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type Location struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenant_id"`

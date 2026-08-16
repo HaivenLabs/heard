@@ -30,7 +30,12 @@ func main() {
 		log.Fatalf("seed demo data: %v", err)
 	}
 
-	server := app.NewServer(cfg, store)
+	identity, err := app.NewIdentityProvider(cfg)
+	if err != nil {
+		log.Fatalf("configure Passage identity provider: %v", err)
+	}
+
+	server := app.NewServer(cfg, store, identity)
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.AppPort,
 		Handler:           server.Router(),

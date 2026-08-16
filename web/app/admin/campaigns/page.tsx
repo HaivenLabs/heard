@@ -1,15 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { apiFetch, DEMO_TENANT_ID, FeedbackLink, Location, SurveyCampaign } from "../../../lib/api";
+import { AdminShell } from "../../../components/admin-shell";
+import { AuthGate } from "../../../components/auth-gate";
+import { RatingFace, RatingValue } from "../../../components/rating-face";
+import { apiFetch, FeedbackLink, Location, Session, SurveyCampaign } from "../../../lib/api";
 
 const defaultCampaign = {
   name: "Takeout bag gift card survey",
-  restaurantName: "Nom",
+  restaurantName: "nom",
   headline: "How did we do?",
   prompt: "Tap the face that matches your visit.",
-  incentive: "Complete this survey for a chance to win a $100 Nom gift card.",
+  incentive: "Complete this survey for a chance to win a $100 nom gift card.",
   smsKeyword: "WIN",
   smsPhone: "(877) 426-0492",
   googleReviewURL: "https://www.google.com/maps/search/?api=1&query=Nom+restaurant",
@@ -17,19 +19,16 @@ const defaultCampaign = {
 };
 
 export default function CampaignBuilderPage() {
-  const [tenantId, setTenantId] = useState(DEMO_TENANT_ID);
+  return <AuthGate>{(session) => <CampaignBuilder session={session} />}</AuthGate>;
+}
+
+function CampaignBuilder({ session }: { session: Session }) {
+  const tenantId = session.tenant_id;
   const [locations, setLocations] = useState<Location[]>([]);
   const [campaign, setCampaign] = useState<SurveyCampaign | null>(null);
   const [link, setLink] = useState<FeedbackLink | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const storedTenantId = window.localStorage.getItem("heard-tenant-id");
-    if (storedTenantId) {
-      setTenantId(storedTenantId);
-    }
-  }, []);
 
   useEffect(() => {
     void apiFetch<{ items: Location[] }>("/api/v1/locations", { tenantId })
@@ -85,29 +84,27 @@ export default function CampaignBuilderPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] text-[#14213d]">
-      <header className="border-b border-[#d8dee9] bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4">
+    <AdminShell session={session}>
+      <main className="px-5 py-10 text-ink sm:py-14">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#667085]">Heard admin</p>
-            <h1 className="text-2xl font-semibold">Flyer survey campaign</h1>
+              <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">Campaign builder</p>
+              <h1 className="mt-4 font-display text-4xl tracking-[-0.05em] sm:text-5xl">Create a flyer guests will actually scan.</h1>
+              <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-ink/55">Choose the location, tune the guest-facing message, and preview the complete takeout flyer before publishing it.</p>
           </div>
-          <nav className="flex items-center gap-2 text-sm">
-            <Link className="rounded-md border border-[#cfd6e4] px-3 py-2 text-[#344054]" href="/admin/recovery">Recovery inbox</Link>
-            <a className="rounded-md bg-[#14213d] px-3 py-2 text-white" href={link?.destination_url ?? "/f/demo-heard"}>Open survey</a>
-          </nav>
-        </div>
-      </header>
+            <a className="inline-flex rounded-full border border-ink/15 bg-[#fffdf8] px-5 py-3 font-body text-sm font-semibold text-ink/65 transition hover:border-clay hover:text-clay" href={link?.destination_url ?? "/f/demo-heard"}>Open guest survey</a>
+          </div>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
         <form className="space-y-5" onSubmit={createCampaign}>
-          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+          {error ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</div> : null}
 
-          <section className="rounded-lg border border-[#d8dee9] bg-white p-5">
+          <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block sm:col-span-2">
                 <span className="mb-1 block text-sm font-medium">Location</span>
-                <select className="h-11 w-full rounded-md border border-[#cfd6e4] bg-white px-3 text-sm outline-none focus:border-[#2f80ed]" name="location_id" required>
+                <select className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" name="location_id" required>
                   {locations.map((location) => (
                     <option key={location.id} value={location.id}>{location.name}</option>
                   ))}
@@ -119,34 +116,36 @@ export default function CampaignBuilderPage() {
               <TextInput defaultValue={defaultCampaign.prompt} label="Survey prompt" name="prompt" />
               <label className="block sm:col-span-2">
                 <span className="mb-1 block text-sm font-medium">Gift card / giveaway copy</span>
-                <textarea className="min-h-20 w-full rounded-md border border-[#cfd6e4] bg-white px-3 py-2 text-sm outline-none focus:border-[#2f80ed]" defaultValue={defaultCampaign.incentive} name="incentive_text" />
+                <textarea className="min-h-24 w-full rounded-2xl border border-ink/15 bg-white px-4 py-3 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" defaultValue={defaultCampaign.incentive} name="incentive_text" />
               </label>
               <TextInput defaultValue={defaultCampaign.smsKeyword} label="SMS keyword" name="sms_keyword" />
               <TextInput defaultValue={defaultCampaign.smsPhone} label="SMS number shown on flyer" name="sms_phone" />
               <label className="block sm:col-span-2">
                 <span className="mb-1 block text-sm font-medium">Google Maps review URL</span>
-                <input className="h-11 w-full rounded-md border border-[#cfd6e4] bg-white px-3 text-sm outline-none focus:border-[#2f80ed]" defaultValue={defaultCampaign.googleReviewURL} name="google_review_url" type="url" />
+                <input className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" defaultValue={defaultCampaign.googleReviewURL} name="google_review_url" type="url" />
               </label>
               <label className="block sm:col-span-2">
                 <span className="mb-1 block text-sm font-medium">Yelp review URL</span>
-                <input className="h-11 w-full rounded-md border border-[#cfd6e4] bg-white px-3 text-sm outline-none focus:border-[#2f80ed]" defaultValue={defaultCampaign.yelpReviewURL} name="yelp_review_url" type="url" />
+                <input className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" defaultValue={defaultCampaign.yelpReviewURL} name="yelp_review_url" type="url" />
               </label>
             </div>
           </section>
 
-          <button className="h-12 w-full rounded-md bg-[#f25f4c] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#dc4f3d] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || locations.length === 0} type="submit">
+          <button className="h-13 w-full rounded-full bg-clay px-5 py-4 font-display text-sm font-semibold uppercase tracking-[0.12em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.24)] transition hover:-translate-y-0.5 hover:bg-[#b95635] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || locations.length === 0} type="submit">
             {busy ? "Creating campaign..." : "Create flyer survey link"}
           </button>
         </form>
 
         <aside className="space-y-4">
-          <section className="rounded-lg border border-[#d8dee9] bg-white p-5">
+          <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
             <div className="mx-auto max-w-md rounded-lg border border-[#cfd6e4] bg-[#fffaf5] p-6 text-center shadow-sm">
-              <div className="mx-auto mb-4 h-14 w-14 rounded-md bg-[#14213d] text-lg font-black leading-[3.5rem] text-white">N</div>
-              <p className="text-sm font-medium text-[#667085]">{campaign?.restaurant_name ?? defaultCampaign.restaurantName}</p>
+              <img alt="nom" className="mx-auto mb-4 h-16 w-16 rounded-full" height="64" src="/brands/nom/logo.png" width="64" />
+              <p className="text-sm font-medium text-[#667085]">{campaign?.restaurant_name.toLowerCase() === "nom" ? "nom" : campaign?.restaurant_name ?? defaultCampaign.restaurantName}</p>
               <h2 className="mt-3 text-4xl font-black uppercase tracking-normal text-[#111827]">{campaign?.headline ?? defaultCampaign.headline}</h2>
-              <div className="mt-5 flex justify-center gap-3 text-4xl" aria-hidden="true">
-                <span>😡</span><span>🙁</span><span>😐</span><span>🙂</span><span>😍</span>
+              <div className="mt-5 grid grid-cols-5 gap-2" aria-label="Survey rating options">
+                {([1, 2, 3, 4, 5] as RatingValue[]).map((value) => (
+                  <RatingFace className="w-full overflow-visible" key={value} rating={value} />
+                ))}
               </div>
               <p className="mt-6 text-lg font-black uppercase tracking-normal text-[#111827]">{campaign?.incentive_text ?? defaultCampaign.incentive}</p>
               <div className="mt-6 grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
@@ -172,19 +171,21 @@ export default function CampaignBuilderPage() {
           </section>
 
           {link ? (
-            <section className="rounded-lg border border-[#d8dee9] bg-white p-5">
+            <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
               <p className="text-sm font-medium">Campaign link</p>
               <a className="mt-2 block break-all rounded-md bg-[#eef4ff] px-3 py-3 text-sm text-[#175cd3]" href={link.destination_url} target="_blank">{link.destination_url}</a>
               {!link.qr_asset_url && !link.qr_svg ? (
                 <p className="mt-3 rounded-md bg-[#fff7ed] px-3 py-2 text-sm text-[#9a3412]">
-                  QR asset generation is disabled because Heard does not have `QURL_BASE_URL` configured.
+                  QR asset generation is disabled because heard does not have `QURL_BASE_URL` configured.
                 </p>
               ) : null}
             </section>
           ) : null}
         </aside>
-      </div>
-    </main>
+          </div>
+        </div>
+      </main>
+    </AdminShell>
   );
 }
 
@@ -192,7 +193,7 @@ function TextInput({ defaultValue, label, name }: { defaultValue: string; label:
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>
-      <input className="h-11 w-full rounded-md border border-[#cfd6e4] bg-white px-3 text-sm outline-none focus:border-[#2f80ed]" defaultValue={defaultValue} name={name} />
+      <input className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" defaultValue={defaultValue} name={name} />
     </label>
   );
 }

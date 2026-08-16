@@ -11,6 +11,8 @@ type Config struct {
 	AllowedOrigin        string
 	DemoSeedEnabled      bool
 	QURLBaseURL          string
+	PassageMode          string
+	LocalPassageSecret   string
 	WorkerPollIntervalMS int
 }
 
@@ -24,6 +26,8 @@ func LoadConfig() Config {
 		AllowedOrigin:        getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
 		DemoSeedEnabled:      getEnv("HEARD_SEED_DEMO", "true") == "true",
 		QURLBaseURL:          getEnv("QURL_BASE_URL", ""),
+		PassageMode:          getEnv("PASSAGE_MODE", "local"),
+		LocalPassageSecret:   getEnv("LOCAL_PASSAGE_SECRET", "heard-local-only-secret"),
 		WorkerPollIntervalMS: getEnvInt("WORKER_POLL_INTERVAL_MS", 1500),
 	}
 }

@@ -1,20 +1,80 @@
 openapi: 3.1.0
 info:
-  title: Heard Slice 1 API
-  version: 0.1.0
+  title: Heard API
+  version: 0.4.0
   description: >
-    First vertical slice for Heard covering tenant/location setup, tokenized
-    feedback links, guest feedback submission, transactional outbox events,
-    and recovery case inbox APIs.
+    Heard's tenant-scoped campaign, guest feedback, and recovery APIs. Manager
+    routes require a Passage-issued Bearer token and matching tenant membership.
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:3010
+    description: Same-origin web gateway for local development
+security:
+  - bearerAuth: []
 paths:
   /api/v1/healthz:
     get:
       summary: Health check
+      security: []
       responses:
         "200":
           description: Healthy
+  /api/v1/marketing-leads:
+    post:
+      summary: Request a heard product conversation
+      description: Stores a restaurant prospect's explicit request to be contacted by heard.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMarketingLeadRequest"
+      responses:
+        "201":
+          description: Contact request saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketingLead"
+        "400":
+          description: Contact request is incomplete or malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/auth/local/session:
+    post:
+      summary: Issue a local Passage-compatible development session
+      description: Available only when the non-production local Passage adapter is enabled.
+      security: []
+      x-local-development-only: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLocalSessionRequest"
+      responses:
+        "201":
+          description: Local development session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/session:
+    get:
+      summary: Resolve the current Passage identity
+      responses:
+        "200":
+          description: Authenticated identity and claims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Identity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/v1/tenants:
     post:
       summary: Create tenant
@@ -44,6 +104,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tenant"
   /api/v1/locations:
+    get:
+      summary: List locations for the active tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Location collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Location"
     post:
       summary: Create location
       parameters:
@@ -61,6 +138,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Location"
+  /api/v1/survey-campaigns:
+    get:
+      summary: List survey campaigns for the active tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Survey campaign collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SurveyCampaign"
+    post:
+      summary: Create a survey campaign
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSurveyCampaignRequest"
+      responses:
+        "201":
+          description: Survey campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyCampaign"
+  /api/v1/survey-campaigns/{id}:
+    get:
+      summary: Get a survey campaign
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Survey campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyCampaign"
+  /api/v1/public/surveys/{token}:
+    get:
+      summary: Resolve a public survey campaign by opaque token
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public survey and feedback link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSurvey"
   /api/v1/locations/{id}:
     get:
       summary: Get location
@@ -108,6 +252,7 @@ paths:
   /api/v1/feedback-links/resolve/{token}:
     get:
       summary: Resolve feedback link token
+      security: []
       parameters:
         - name: token
           in: path
@@ -124,6 +269,7 @@ paths:
   /api/v1/feedback-sessions:
     post:
       summary: Create feedback session
+      security: []
       requestBody:
         required: true
         content:
@@ -156,6 +302,7 @@ paths:
                       $ref: "#/components/schemas/FeedbackResponse"
     post:
       summary: Submit feedback response
+      security: []
       requestBody:
         required: true
         content:
@@ -246,6 +393,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecoveryCase"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Passage access token
+  responses:
+    Unauthorized:
+      description: Authentication is missing, invalid, or expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource or development-only endpoint is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   parameters:
     TenantHeader:
       name: X-Heard-Tenant-ID
@@ -276,6 +441,73 @@ components:
         type: string
         format: uuid
   schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, status]
+          properties:
+            message: { type: string }
+            status: { type: integer }
+    Identity:
+      type: object
+      required: [user_id, email, display_name, role, tenant_ids, permissions, provider]
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        role: { type: string }
+        tenant_ids:
+          type: array
+          items: { type: string, format: uuid }
+        permissions:
+          type: array
+          items: { type: string }
+        provider: { type: string }
+    Session:
+      type: object
+      required: [access_token, expires_at, identity, tenant_id]
+      properties:
+        access_token: { type: string }
+        expires_at: { type: string, format: date-time }
+        identity: { $ref: "#/components/schemas/Identity" }
+        tenant_id: { type: string, format: uuid }
+    CreateLocalSessionRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+    MarketingLead:
+      type: object
+      required: [id, name, work_email, phone, restaurant_name, location_count, challenge, source, contact_consent, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        work_email: { type: string, format: email, maxLength: 254 }
+        phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        restaurant_name: { type: string, minLength: 2, maxLength: 160 }
+        location_count: { type: string, enum: ["1", "2-4", "5-19", "20-49", "50+"] }
+        challenge: { type: string, maxLength: 1000 }
+        source: { type: string, enum: [marketing_site, guest_demo] }
+        contact_consent: { type: boolean, const: true }
+        status: { type: string, enum: [new] }
+        created_at: { type: string, format: date-time }
+    CreateMarketingLeadRequest:
+      type: object
+      required: [name, work_email, restaurant_name, location_count, contact_consent]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        work_email: { type: string, format: email, maxLength: 254 }
+        phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        restaurant_name: { type: string, minLength: 2, maxLength: 160 }
+        location_count: { type: string, enum: ["1", "2-4", "5-19", "20-49", "50+"] }
+        challenge: { type: string, maxLength: 1000 }
+        source: { type: string, enum: [marketing_site, guest_demo], default: marketing_site }
+        contact_consent: { type: boolean, const: true }
     Tenant:
       type: object
       required: [id, name, slug, created_at]
@@ -294,6 +526,30 @@ components:
         slug: { type: string }
         timezone: { type: string }
         created_at: { type: string, format: date-time }
+    SurveyCampaign:
+      type: object
+      required: [id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text, sms_keyword, sms_phone, google_review_url, yelp_review_url, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        name: { type: string }
+        restaurant_name: { type: string }
+        headline: { type: string }
+        prompt: { type: string }
+        incentive_text: { type: string }
+        sms_keyword: { type: string }
+        sms_phone: { type: string }
+        google_review_url: { type: string, format: uri }
+        yelp_review_url: { type: string, format: uri }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+    PublicSurvey:
+      type: object
+      required: [link, campaign]
+      properties:
+        link: { $ref: "#/components/schemas/FeedbackLink" }
+        campaign: { $ref: "#/components/schemas/SurveyCampaign" }
     FeedbackLink:
       type: object
       required: [id, tenant_id, location_id, name, token, status, channel, qr_asset_url, destination_url, created_at]
@@ -321,8 +577,8 @@ components:
         source: { type: string }
         channel: { type: string }
         guest_name: { type: string }
-        guest_phone: { type: string }
-        guest_email: { type: string }
+        guest_phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        guest_email: { type: string, format: email, maxLength: 254 }
         wants_follow_up: { type: boolean }
         contact_consent: { type: boolean }
         marketing_consent: { type: boolean }
@@ -344,8 +600,8 @@ components:
           type: array
           items: { type: string }
         guest_name: { type: string }
-        guest_phone: { type: string }
-        guest_email: { type: string }
+        guest_phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        guest_email: { type: string, format: email, maxLength: 254 }
         wants_follow_up: { type: boolean }
         contact_consent: { type: boolean }
         marketing_consent: { type: boolean }
@@ -384,6 +640,21 @@ components:
         name: { type: string }
         slug: { type: string }
         timezone: { type: string }
+    CreateSurveyCampaignRequest:
+      type: object
+      required: [tenant_id, location_id, name, restaurant_name, headline, prompt]
+      properties:
+        tenant_id: { type: string, format: uuid }
+        location_id: { type: string, format: uuid }
+        name: { type: string }
+        restaurant_name: { type: string }
+        headline: { type: string }
+        prompt: { type: string }
+        incentive_text: { type: string }
+        sms_keyword: { type: string }
+        sms_phone: { type: string }
+        google_review_url: { type: string, format: uri }
+        yelp_review_url: { type: string, format: uri }
     CreateFeedbackLinkRequest:
       type: object
       required: [tenant_id, location_id]
@@ -407,6 +678,7 @@ components:
         metadata: { type: object, additionalProperties: true }
     SubmitFeedbackRequest:
       type: object
+      description: Flyer giveaway submissions require at least one valid contact method. The API enforces the conditional requirement after campaign metadata is resolved.
       required: [feedback_session_id, rating]
       properties:
         feedback_session_id: { type: string, format: uuid }
@@ -416,8 +688,8 @@ components:
           type: array
           items: { type: string }
         guest_name: { type: string }
-        guest_phone: { type: string }
-        guest_email: { type: string }
+        guest_phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        guest_email: { type: string, format: email, maxLength: 254 }
         wants_follow_up: { type: boolean }
         contact_consent: { type: boolean }
         marketing_consent: { type: boolean }

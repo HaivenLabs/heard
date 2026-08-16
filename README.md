@@ -175,6 +175,10 @@ docker compose up --build
 Then open:
 
 - `http://localhost:3010` for the web app
+- `http://localhost:3010/contact` for the prospect contact journey
+- `http://localhost:3010/api/v1/healthz` for the same-origin API health endpoint
+- `http://localhost:3010/login` for existing-customer sign-in
+- `http://localhost:3010/admin` for the authenticated management console
 - `http://localhost:3010/admin/campaigns` to create a printed flyer survey campaign
 - `http://localhost:3010/f/demo-heard` for the seeded flyer survey flow
 - `http://localhost:3010/admin/recovery` for the manager recovery inbox
@@ -185,8 +189,15 @@ Default seeded tenant header:
 11111111-1111-1111-1111-111111111111
 ```
 
+`/contact` is the public prospect path; it records a request for a tailored walkthrough and does not promise a free trial. `/login` is only for existing customers. In local development, any valid email exercises the management workflow through a development-only identity adapter and a seeded tenant. The adapter is rejected when `APP_ENV=production`; production registration, sessions, tenant membership, roles, and permissions remain owned by Passage.
+
+Browser traffic uses the Heard origin at `http://localhost:3010/api/*`. Next.js forwards those requests over the Docker network to the Go API; port `8080` remains exposed only for direct API development and debugging.
+
 Reference docs:
 
 - [Slice 1 implementation](./docs/slice1.md)
 - [Slice 2 implementation](./docs/slice2.md)
+- [Slice 3 authenticated activation](./docs/slice3.md)
+- [Slice 4 branded guest experience](./docs/slice4.md)
+- [Slice 5 prospect conversion](./docs/slice5.md)
 - [Slice 1 OpenAPI contract](./docs/openapi.slice1.yaml)
