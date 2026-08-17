@@ -13,6 +13,8 @@ As an existing heard customer, I can reach a dedicated sign-in page without seei
 ## Scope
 
 - Separate prospect conversion and existing-customer sign-in journeys.
+- Prospect-first homepage navigation with primary restaurant and guest-experience calls to action; customer sign-in remains visually tertiary.
+- Plain-language homepage feedback states that connect a newly received low rating directly to the Recovery inbox without implying a separate live-feed product.
 - Public `/contact` page with product outcomes, expectations, and a short lead form.
 - Public `POST /api/v1/marketing-leads` endpoint.
 - Durable `marketing_leads` storage for sales follow-up.
@@ -63,6 +65,7 @@ Successful creation logs only lead ID, source, and location range. Contact detai
 - Validation rejects missing consent, malformed contact details, unsupported location ranges, and unknown sources.
 - API persistence is verified against PostgreSQL.
 - Browser journey covers guest-demo CTA, form validation, successful confirmation, and separate customer sign-in.
+- Homepage checks prevent operational jargon from replacing the new-feedback and Recovery inbox language, and verify both prospect calls to action remain in the primary navigation.
 - Production frontend build and type validation pass.
 
 ## Definition of done

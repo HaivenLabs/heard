@@ -10,12 +10,14 @@ export default function HomePage() {
       <section className="relative min-h-[94vh] border-b border-ink/10">
         <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(23,37,29,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(23,37,29,0.045)_1px,transparent_1px)] [background-size:52px_52px]" />
         <div className="pointer-events-none absolute right-[-12rem] top-24 h-[34rem] w-[34rem] rounded-full bg-clay/20 blur-3xl" />
-        <header className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+        <header className="relative mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-4 px-6 py-6">
           <Link className="font-display text-2xl font-semibold tracking-[-0.05em]" href="/">heard<span className="text-clay">.</span></Link>
-          <nav className="flex items-center gap-2 sm:gap-3" aria-label="Primary navigation">
-            <a className="hidden rounded-full px-4 py-2 font-body text-sm text-ink/55 transition hover:text-ink md:block" href="#how-it-works">How it works</a>
-            <Link className="hidden rounded-full px-4 py-2 font-body text-sm text-ink/55 transition hover:text-ink sm:block" href="/f/demo-heard">Try the guest demo</Link>
-            <Link className="rounded-full border border-ink/15 bg-white/60 px-5 py-2.5 font-body text-sm font-semibold transition hover:border-clay" href="/login">Sign in</Link>
+          <Link className="font-body text-sm font-semibold text-ink/55 transition hover:text-ink sm:hidden" href="/login">Sign in</Link>
+          <nav className="order-last grid w-full grid-cols-2 items-center gap-2 sm:order-none sm:flex sm:w-auto sm:gap-2" aria-label="Primary navigation">
+            <a className="hidden rounded-full px-3 py-2 font-body text-sm text-ink/55 transition hover:text-ink lg:block" href="#how-it-works">How it works</a>
+            <Link className="hidden rounded-full px-3 py-2 font-body text-sm text-ink/55 transition hover:text-ink sm:block" href="/login">Sign in</Link>
+            <Link className="rounded-full border border-ink/15 bg-white/60 px-3 py-2.5 text-center font-body text-xs font-semibold transition hover:-translate-y-0.5 hover:border-ink/35 hover:bg-white sm:px-4 sm:text-sm" href="/f/demo-heard">Try guest experience</Link>
+            <Link className="rounded-full bg-clay px-3 py-2.5 text-center font-display text-xs font-semibold tracking-[0.03em] text-white shadow-[0_10px_24px_rgba(203,104,67,0.2)] transition hover:-translate-y-0.5 hover:bg-[#b95635] sm:px-5 sm:text-sm" href={"/contact" as Route}>See heard for your restaurant</Link>
           </nav>
         </header>
 
@@ -26,7 +28,7 @@ export default function HomePage() {
             <p className="mt-8 max-w-2xl font-body text-lg leading-8 text-ink/62">heard gives restaurants a guest feedback experience people actually finish, then turns every rough visit into a clear recovery task while the relationship can still be saved.</p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link className="rounded-full bg-clay px-7 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_16px_36px_rgba(203,104,67,0.28)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/contact" as Route}>See heard for your restaurant</Link>
-              <Link className="rounded-full border border-ink/15 bg-white/45 px-7 py-4 font-body text-sm font-semibold transition hover:border-ink/35 hover:bg-white/75" href="/f/demo-heard">Try the guest experience</Link>
+              <Link className="rounded-full border border-ink/15 bg-white/45 px-7 py-4 font-body text-sm font-semibold transition hover:border-ink/35 hover:bg-white/75" href="/f/demo-heard">Try guest experience</Link>
             </div>
             <p className="mt-4 font-body text-sm text-ink/42">A restaurant-specific walkthrough. No generic sales maze.</p>
           </div>
@@ -36,24 +38,28 @@ export default function HomePage() {
             <div className="relative rounded-[2.5rem] bg-[#17251d] p-7 text-parchment shadow-[0_40px_100px_rgba(23,37,29,0.28)] sm:p-9">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-body text-xs uppercase tracking-[0.22em] text-parchment/42">A guest just answered</p>
+                  <p className="font-body text-xs uppercase tracking-[0.22em] text-parchment/42">New guest feedback</p>
                   <p className="mt-2 font-display text-2xl">How did we do?</p>
                 </div>
-                <span className="rounded-full bg-[#9fba73]/15 px-3 py-1.5 font-body text-xs font-semibold text-[#c4d99d]">Live signal</span>
+                <span className="rounded-full bg-[#9fba73]/15 px-3 py-1.5 font-body text-xs font-semibold text-[#c4d99d]">Just received</span>
               </div>
               <div className="mt-8 grid grid-cols-5 gap-2">
                 {ratingValues.map((rating) => <RatingFace className={`w-full overflow-visible ${rating === 2 ? "drop-shadow-[0_0_12px_rgba(247,194,111,0.25)]" : "opacity-45"}`} key={rating} rating={rating} />)}
               </div>
               <div className="mt-7 rounded-[1.5rem] border border-clay/28 bg-clay/10 p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-body text-xs font-bold uppercase tracking-[0.18em] text-clay">Recovery ready</p>
+                  <p className="font-body text-xs font-bold uppercase tracking-[0.18em] text-clay">Needs follow-up</p>
                   <span className="font-body text-xs text-parchment/45">Just now</span>
                 </div>
                 <p className="mt-3 font-display text-xl">Pickup took too long.</p>
-                <p className="mt-2 font-body text-sm leading-6 text-parchment/62">The guest shared contact details. Service and speed are tagged for follow-up.</p>
+                <p className="mt-2 font-body text-sm leading-6 text-parchment/62">The guest asked to hear from you. Service and speed are tagged so your team has the context to respond.</p>
                 <div className="mt-4 flex gap-2">
                   <span className="rounded-full bg-parchment/8 px-3 py-1.5 font-body text-xs text-parchment/65">Speed</span>
                   <span className="rounded-full bg-parchment/8 px-3 py-1.5 font-body text-xs text-parchment/65">Takeout</span>
+                </div>
+                <div className="mt-5 flex items-center justify-between gap-4 border-t border-parchment/10 pt-4 font-body text-xs">
+                  <span className="font-semibold text-parchment">Sent to Recovery inbox</span>
+                  <span className="text-parchment/42">Ready for your team</span>
                 </div>
               </div>
             </div>
