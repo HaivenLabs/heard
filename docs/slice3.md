@@ -16,6 +16,7 @@ As an existing restaurant customer, I can sign in, see my workspace, and start b
 - Tenant-membership and permission enforcement derived from verified identity claims.
 - Authenticated management console with real location, campaign, and recovery counts.
 - Persistent shared management shell, navigation, and background across every authenticated admin route.
+- The management shell uses the same parchment, grid, clay, olive, ink, card, and button language as heard's public surfaces while preserving admin-specific information density.
 - Same-origin `/api/*` gateway from the web app to the internal Go API.
 - Direct console path to the flyer campaign builder and recovery inbox.
 - Production startup guard that rejects the local identity adapter.

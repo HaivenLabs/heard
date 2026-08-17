@@ -1,31 +1,23 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { BrandBackdrop } from "../components/brand-backdrop";
+import { PublicHeader } from "../components/public-header";
 import { RatingFace, RatingValue } from "../components/rating-face";
 
 const ratingValues: RatingValue[] = [1, 2, 3, 4, 5];
 
 export default function HomePage() {
   return (
-    <main className="overflow-hidden bg-[#f7f1e6] text-ink">
+    <main className="relative overflow-hidden bg-[#f7f1e6] text-ink">
+      <BrandBackdrop />
       <section className="relative min-h-[94vh] border-b border-ink/10">
-        <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(23,37,29,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(23,37,29,0.045)_1px,transparent_1px)] [background-size:52px_52px]" />
-        <div className="pointer-events-none absolute right-[-12rem] top-24 h-[34rem] w-[34rem] rounded-full bg-clay/20 blur-3xl" />
-        <header className="relative mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-4 px-6 py-6">
-          <Link className="font-display text-2xl font-semibold tracking-[-0.05em]" href="/">heard<span className="text-clay">.</span></Link>
-          <Link className="font-body text-sm font-semibold text-ink/55 transition hover:text-ink sm:hidden" href="/login">Sign in</Link>
-          <nav className="order-last grid w-full grid-cols-2 items-center gap-2 sm:order-none sm:flex sm:w-auto sm:gap-2" aria-label="Primary navigation">
-            <a className="hidden rounded-full px-3 py-2 font-body text-sm text-ink/55 transition hover:text-ink lg:block" href="#how-it-works">How it works</a>
-            <Link className="hidden rounded-full px-3 py-2 font-body text-sm text-ink/55 transition hover:text-ink sm:block" href="/login">Sign in</Link>
-            <Link className="rounded-full border border-ink/15 bg-white/60 px-3 py-2.5 text-center font-body text-xs font-semibold transition hover:-translate-y-0.5 hover:border-ink/35 hover:bg-white sm:px-4 sm:text-sm" href="/f/demo-heard">Try guest experience</Link>
-            <Link className="rounded-full bg-clay px-3 py-2.5 text-center font-display text-xs font-semibold tracking-[0.03em] text-white shadow-[0_10px_24px_rgba(203,104,67,0.2)] transition hover:-translate-y-0.5 hover:bg-[#b95635] sm:px-5 sm:text-sm" href={"/contact" as Route}>See heard for your restaurant</Link>
-          </nav>
-        </header>
+        <PublicHeader />
 
         <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-6 pb-20 pt-16 lg:grid-cols-[1.06fr_0.8fr] lg:pt-24">
           <div>
-            <p className="font-body text-xs font-semibold uppercase tracking-[0.3em] text-clay">The guest experience, in your hands</p>
-            <h1 className="mt-6 max-w-4xl font-display text-6xl leading-[0.96] tracking-[-0.065em] sm:text-7xl lg:text-[6.4rem]">Fix the visit before it becomes the review.</h1>
-            <p className="mt-8 max-w-2xl font-body text-lg leading-8 text-ink/62">heard gives restaurants a guest feedback experience people actually finish, then turns every rough visit into a clear recovery task while the relationship can still be saved.</p>
+            <h1 className="max-w-4xl font-display text-6xl leading-[0.96] tracking-[-0.065em] sm:text-7xl lg:text-[6.4rem]">The guest experience, in your hands</h1>
+            <p className="mt-7 max-w-2xl font-display text-2xl leading-tight tracking-[-0.03em] text-clay sm:text-3xl">Fix the visit before it becomes the review.</p>
+            <p className="mt-5 max-w-2xl font-body text-lg leading-8 text-ink/62">heard gives restaurants a guest feedback experience people actually finish, then turns every rough visit into a clear recovery task while the relationship can still be saved.</p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link className="rounded-full bg-clay px-7 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_16px_36px_rgba(203,104,67,0.28)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/contact" as Route}>See heard for your restaurant</Link>
               <Link className="rounded-full border border-ink/15 bg-white/45 px-7 py-4 font-body text-sm font-semibold transition hover:border-ink/35 hover:bg-white/75" href="/f/demo-heard">Try guest experience</Link>

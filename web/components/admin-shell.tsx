@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode } from "react";
 import { clearStoredSession, Session } from "../lib/api";
+import { BrandBackdrop } from "./brand-backdrop";
 
 const navigation: Array<{ href: Route; label: string }> = [
   { href: "/admin", label: "Overview" },
@@ -22,8 +23,9 @@ export function AdminShell({ children, session }: { children: ReactNode; session
   }
 
   return (
-    <div className="min-h-screen bg-[#f5efe6] text-ink">
-      <header className="sticky top-0 z-20 border-b border-ink/10 bg-[#fffdf8]/90 backdrop-blur-xl">
+    <div className="relative min-h-screen overflow-hidden bg-[#f7f1e6] text-ink">
+      <BrandBackdrop />
+      <header className="sticky top-0 z-20 border-b border-ink/10 bg-[#fffaf0]/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4">
           <div className="flex items-center gap-8">
             <Link className="font-display text-xl font-semibold tracking-[-0.04em]" href="/admin">
@@ -61,7 +63,7 @@ export function AdminShell({ children, session }: { children: ReactNode; session
           })}
         </nav>
       </header>
-      {children}
+      <div className="relative">{children}</div>
     </div>
   );
 }

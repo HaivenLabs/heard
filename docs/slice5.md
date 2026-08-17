@@ -15,6 +15,10 @@ As an existing heard customer, I can reach a dedicated sign-in page without seei
 - Separate prospect conversion and existing-customer sign-in journeys.
 - Prospect-first homepage navigation with primary restaurant and guest-experience calls to action; customer sign-in remains visually tertiary.
 - Plain-language homepage feedback states that connect a newly received low rating directly to the Recovery inbox without implying a separate live-feed product.
+- One shared public header across the homepage and contact journey so conversion actions never disappear between steps.
+- A consistent light editorial canvas using parchment, a subtle grid, clay and olive atmosphere, ink accent panels, and the same card and button treatment used by the management console.
+- Headline-first hierarchy: the distinctive product line is the primary heading and the explanatory promise is its subtitle, not a competing second headline.
+- A deliberately concise contact page with one operator story and one next-step explanation beside the lead form; no stacked feature lists or redundant sales sections.
 - Public `/contact` page with product outcomes, expectations, and a short lead form.
 - Public `POST /api/v1/marketing-leads` endpoint.
 - Durable `marketing_leads` storage for sales follow-up.
@@ -66,12 +70,15 @@ Successful creation logs only lead ID, source, and location range. Contact detai
 - API persistence is verified against PostgreSQL.
 - Browser journey covers guest-demo CTA, form validation, successful confirmation, and separate customer sign-in.
 - Homepage checks prevent operational jargon from replacing the new-feedback and Recovery inbox language, and verify both prospect calls to action remain in the primary navigation.
+- Brand-language checks require the shared header and backdrop, enforce headline hierarchy, and prevent the contact page from returning to a disconnected full-dark motif or numbered feature list.
 - Production frontend build and type validation pass.
 
 ## Definition of done
 
 - Prospects never land on sign-in from a marketing CTA.
 - Existing customers retain a direct sign-in path.
+- Home, contact, and admin read as one product through shared colors, atmosphere, typography, card shapes, and action hierarchy.
+- The contact journey retains the primary public navigation and presents only the context needed to complete the form.
 - The form explains heard's value and what happens after submission.
 - Contact requests persist with source attribution and consent.
 - No public UI exposes Passage, sandbox, seeded workspace, or local-build language.

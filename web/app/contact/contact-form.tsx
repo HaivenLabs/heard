@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import { BrandBackdrop } from "../../components/brand-backdrop";
+import { PublicHeader } from "../../components/public-header";
 import { apiFetch, MarketingLead } from "../../lib/api";
 
 type LeadSource = "marketing_site" | "guest_demo";
@@ -53,45 +55,22 @@ export default function ContactForm({ source }: { source: LeadSource }) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#17251d] text-parchment">
-      <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_1px_1px,rgba(247,241,227,0.14)_1px,transparent_0)] [background-size:30px_30px]" />
-      <div className="pointer-events-none absolute -left-40 top-[-14rem] h-[38rem] w-[38rem] rounded-full bg-clay/35 blur-3xl" />
-      <div className="pointer-events-none absolute -right-40 bottom-[-16rem] h-[36rem] w-[36rem] rounded-full bg-olive/35 blur-3xl" />
+    <main className="relative min-h-screen overflow-hidden bg-[#f7f1e6] text-ink">
+      <BrandBackdrop />
+      <PublicHeader />
 
-      <header className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-        <Link className="font-display text-2xl font-semibold tracking-[-0.05em]" href="/">heard<span className="text-clay">.</span></Link>
-        <p className="font-body text-sm text-parchment/60">Already a customer? <Link className="font-semibold text-parchment underline decoration-clay/60 underline-offset-4" href="/login">Sign in</Link></p>
-      </header>
-
-      <div className="relative mx-auto grid max-w-7xl items-start gap-12 px-6 pb-16 pt-8 lg:grid-cols-[0.9fr_0.78fr] lg:gap-20 lg:pb-24 lg:pt-16">
-        <section className="lg:sticky lg:top-12">
-          <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">
-            Built for restaurant operators, by restaurant operators.
-          </p>
-          <h1 className="mt-6 max-w-2xl font-display text-5xl leading-[0.98] tracking-[-0.055em] sm:text-7xl">Now see what happens on the restaurant side.</h1>
-          <p className="mt-7 max-w-xl font-body text-lg leading-8 text-parchment/68">heard gives your team a private signal while there is still time to fix the visit, recover the guest, and learn what keeps going wrong by location.</p>
-
-          <div className="mt-10 space-y-5">
-            <Outcome number="01" title="Hear from more guests">One quick, branded experience through QR or link. No app and no account for guests.</Outcome>
-            <Outcome number="02" title="Know who needs a human">Contact details, the guest&apos;s words, and the operational issue arrive together.</Outcome>
-            <Outcome number="03" title="Turn feedback into a next move">Give every location a focused recovery queue instead of another dashboard nobody checks.</Outcome>
-          </div>
-
-          <div className="mt-10 rounded-[1.5rem] border border-parchment/12 bg-parchment/[0.06] p-5">
-            <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-[#a9c27c]">What happens next</p>
-            <p className="mt-2 font-body text-sm leading-6 text-parchment/68">A real person from heard will learn how you collect feedback today and tailor the walkthrough to your restaurant. No generic sales maze.</p>
-          </div>
-
-          <div className="mt-5 border-l-2 border-clay/70 pl-5">
-            <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-clay">About us</p>
-            <p className="mt-2 max-w-xl font-body text-sm leading-6 text-parchment/68">We&apos;re restaurant operators and builders creating the guest feedback system we want in our own restaurants: quick for guests, actionable for teams, and focused on making things right.</p>
-          </div>
+      <div className="relative mx-auto grid max-w-7xl items-start gap-12 px-6 pb-20 pt-10 lg:grid-cols-[0.88fr_0.78fr] lg:gap-20 lg:pb-24 lg:pt-20">
+        <section className="lg:sticky lg:top-32">
+          <h1 className="max-w-2xl font-display text-5xl leading-[0.98] tracking-[-0.055em] sm:text-7xl">Built for restaurant operators, by restaurant operators.</h1>
+          <p className="mt-7 max-w-xl font-display text-2xl leading-tight tracking-[-0.03em] text-clay sm:text-3xl">Now see what happens on the restaurant side.</p>
+          <p className="mt-6 max-w-xl font-body text-lg leading-8 text-ink/62">We&apos;re restaurant operators and builders creating the feedback system we want in our own restaurants: quick for guests, clear for teams, and focused on making things right.</p>
+          <p className="mt-8 max-w-xl border-l-2 border-olive/55 pl-5 font-body text-sm leading-7 text-ink/55"><strong className="font-semibold text-ink">What happens next:</strong> a real person from heard will learn how you collect feedback today and tailor the walkthrough to your restaurant.</p>
         </section>
 
-        <section className="rounded-[2rem] border border-parchment/15 bg-[#fffaf0] p-6 text-ink shadow-[0_38px_110px_rgba(0,0,0,0.32)] sm:p-9">
+        <section className="rounded-[2rem] border border-ink/10 bg-[#fffaf0]/95 p-6 text-ink shadow-[0_28px_80px_rgba(23,37,29,0.14)] backdrop-blur-sm sm:p-9" id="walkthrough">
           {lead ? (
             <div className="py-8 text-center">
-              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-olive/15 text-3xl text-olive">✓</div>
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-olive/15 text-3xl text-olive">&#10003;</div>
               <p className="mt-6 font-body text-xs font-bold uppercase tracking-[0.22em] text-clay">Request received</p>
               <h2 className="mt-3 font-display text-4xl tracking-[-0.045em]">We&apos;ll take it from here.</h2>
               <p className="mx-auto mt-4 max-w-md font-body text-base leading-7 text-ink/60">The heard team has your request for {lead.restaurant_name}. We&apos;ll reach out using the contact details you provided.</p>
@@ -102,8 +81,8 @@ export default function ContactForm({ source }: { source: LeadSource }) {
             </div>
           ) : (
             <>
-              <p className="font-body text-xs font-bold uppercase tracking-[0.22em] text-clay">See heard for your restaurant</p>
-              <h2 className="mt-3 font-display text-4xl tracking-[-0.045em]">Request a walkthrough.</h2>
+              <h2 className="font-display text-4xl leading-tight tracking-[-0.045em]">See heard for your restaurant</h2>
+              <p className="mt-3 font-display text-xl tracking-[-0.02em] text-clay">Request a walkthrough built around your operation.</p>
               <p className="mt-3 font-body text-sm leading-6 text-ink/55">Tell us just enough to make the conversation useful. Phone is optional.</p>
 
               <form className="mt-8 space-y-5" noValidate onSubmit={submit}>
@@ -158,8 +137,4 @@ function validateLead({ name, workEmail, phone, restaurantName, locationCount }:
 
 function LeadField({ autoComplete, inputMode, label, name, placeholder, type = "text" }: { autoComplete: string; inputMode?: "email" | "tel"; label: string; name: string; placeholder: string; type?: string }) {
   return <label className="block"><span className="mb-2 block font-body text-sm font-semibold">{label}</span><input autoComplete={autoComplete} className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-base outline-none transition placeholder:text-ink/28 focus:border-clay focus:ring-4 focus:ring-clay/10" inputMode={inputMode} name={name} placeholder={placeholder} type={type} /></label>;
-}
-
-function Outcome({ children, number, title }: { children: React.ReactNode; number: string; title: string }) {
-  return <div className="grid grid-cols-[2.5rem_1fr] gap-4"><span className="font-body text-xs font-bold text-clay">{number}</span><div><h2 className="font-display text-xl font-semibold tracking-[-0.02em]">{title}</h2><p className="mt-1 font-body text-sm leading-6 text-parchment/58">{children}</p></div></div>;
 }
