@@ -14,7 +14,8 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     const stored = getStoredSession();
     setSession(stored);
     if (!stored) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}` as Route);
+      const requested = `${pathname}${window.location.search}`;
+      router.replace(`/login?next=${encodeURIComponent(requested)}` as Route);
     }
   }, [pathname, router]);
 

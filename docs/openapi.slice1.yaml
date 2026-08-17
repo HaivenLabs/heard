@@ -1,10 +1,14 @@
 openapi: 3.1.0
 info:
   title: Heard API
-  version: 0.4.0
+  version: 0.5.0
   description: >
     Heard's tenant-scoped campaign, guest feedback, and recovery APIs. Manager
-    routes require a Passage-issued Bearer token and matching tenant membership.
+    routes require a Passage-issued Bearer product token and matching tenant membership.
+    Production validation requires EdDSA with Passage JWKS, the configured issuer,
+    audience `heard`, token expiry, UUID subject and organization claims, a known
+    organization role, and a `heard` product-access grant. Client role or tenant
+    headers never create identity authority.
 servers:
   - url: http://localhost:3010
     description: Same-origin web gateway for local development
@@ -63,6 +67,30 @@ paths:
                 $ref: "#/components/schemas/Session"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/auth/local/registration:
+    post:
+      summary: Register through the local Passage-compatible development adapter
+      description: >
+        Creates a predictable non-production Passage account context for the
+        self-service onboarding workflow. This endpoint is unavailable in
+        production and is not the production Passage registration contract.
+      security: []
+      x-local-development-only: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLocalSessionRequest"
+      responses:
+        "201":
+          description: Local development registration resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/session:
     get:
       summary: Resolve the current Passage identity
@@ -75,6 +103,54 @@ paths:
                 $ref: "#/components/schemas/Identity"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/onboarding:
+    get:
+      summary: Resolve the current operator's Heard onboarding state
+      responses:
+        "200":
+          description: Current durable onboarding state and next incomplete step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/onboarding/activations:
+    post:
+      summary: Create or resume the first restaurant workspace and location
+      description: >
+        Derives actor and account context from the verified Passage identity.
+        Retries and concurrent requests for the same actor return the same
+        activation, tenant, and location.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOnboardingActivationRequest"
+      responses:
+        "200":
+          description: Workspace activation created or safely resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingState"
+        "400":
+          description: Activation data or account context is incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Verified identity may not activate a Heard workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/tenants:
     post:
       summary: Create tenant
@@ -108,6 +184,8 @@ paths:
       summary: List locations for the active tenant
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
       responses:
         "200":
           description: Location collection
@@ -121,6 +199,9 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Location"
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  has_more: { type: boolean }
     post:
       summary: Create location
       parameters:
@@ -143,6 +224,8 @@ paths:
       summary: List survey campaigns for the active tenant
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
       responses:
         "200":
           description: Survey campaign collection
@@ -156,6 +239,9 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/SurveyCampaign"
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  has_more: { type: boolean }
     post:
       summary: Create a survey campaign
       parameters:
@@ -288,6 +374,8 @@ paths:
       summary: List feedback responses
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
       responses:
         "200":
           description: Feedback response collection
@@ -300,6 +388,9 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/FeedbackResponse"
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  has_more: { type: boolean }
     post:
       summary: Submit feedback response
       security: []
@@ -339,6 +430,8 @@ paths:
       summary: List recovery cases
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
       responses:
         "200":
           description: Recovery case collection
@@ -351,6 +444,9 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/RecoveryCase"
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  has_more: { type: boolean }
   /api/v1/recovery-cases/{id}:
     get:
       summary: Get recovery case
@@ -412,6 +508,24 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
     TenantHeader:
       name: X-Heard-Tenant-ID
       in: header
@@ -480,6 +594,27 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email }
+    CreateOnboardingActivationRequest:
+      type: object
+      required: [restaurant_name, location_name, source]
+      additionalProperties: false
+      properties:
+        restaurant_name: { type: string, minLength: 2, maxLength: 160 }
+        location_name: { type: string, minLength: 2, maxLength: 160 }
+        timezone: { type: string, default: America/Los_Angeles }
+        source: { type: string, enum: [homepage, guest_demo, direct] }
+    OnboardingState:
+      type: object
+      required: [status, next_step]
+      properties:
+        activation_id: { type: string, format: uuid }
+        status: { type: string, enum: [not_started, in_progress, complete] }
+        next_step: { type: string, enum: [workspace, campaign, feedback_link, complete] }
+        source: { type: string, enum: [homepage, guest_demo, direct] }
+        tenant: { $ref: "#/components/schemas/Tenant" }
+        location: { $ref: "#/components/schemas/Location" }
+        campaign: { $ref: "#/components/schemas/SurveyCampaign" }
+        feedback_link: { $ref: "#/components/schemas/FeedbackLink" }
     MarketingLead:
       type: object
       required: [id, name, work_email, phone, restaurant_name, location_count, challenge, source, contact_consent, status, created_at]
@@ -678,7 +813,7 @@ components:
         metadata: { type: object, additionalProperties: true }
     SubmitFeedbackRequest:
       type: object
-      description: Flyer giveaway submissions require at least one valid contact method. The API enforces the conditional requirement after campaign metadata is resolved.
+      description: Flyer giveaway submissions require at least one valid contact method, explicit transactional-contact consent, and a meaningful comment for ratings below 5. Campaign classification is resolved from the server-side feedback link; client metadata cannot opt out of these rules.
       required: [feedback_session_id, rating]
       properties:
         feedback_session_id: { type: string, format: uuid }

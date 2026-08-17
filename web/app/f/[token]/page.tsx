@@ -313,8 +313,8 @@ export default function FlyerSurveyPage({ params }: { params: Promise<{ token: s
                     : `You are entered. Thanks for helping other guests discover ${restaurantName}.`}
               </p>
               {isDemo ? (
-                <Link className="mt-7 inline-flex rounded-full bg-[#416a6c] px-6 py-3 font-body text-sm font-bold lowercase text-white transition hover:bg-[#315759]" href={"/contact?source=guest_demo" as Route}>
-                  see heard for your restaurant
+                <Link className="mt-7 inline-flex rounded-full bg-[#416a6c] px-6 py-3 font-body text-sm font-bold lowercase text-white transition hover:bg-[#315759]" href={"/start?source=guest_demo" as Route}>
+                  start using heard
                 </Link>
               ) : null}
             </div>

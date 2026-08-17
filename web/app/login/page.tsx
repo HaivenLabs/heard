@@ -4,10 +4,11 @@ import Link from "next/link";
 import type { Route } from "next";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createLocalSession, getStoredSession } from "../../lib/api";
+import { createLocalSession, getStoredSession, isProductionAuth, passageHostedUrl, safeReturnTo } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const productionAuth = isProductionAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -22,10 +23,19 @@ export default function LoginPage() {
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
+    const next = safeReturnTo(new URLSearchParams(window.location.search).get("next"));
+    if (isProductionAuth()) {
+      try {
+        window.location.assign(passageHostedUrl("login", next));
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Account sign in is temporarily unavailable");
+        setBusy(false);
+      }
+      return;
+    }
     try {
       await createLocalSession(String(form.get("email") ?? ""));
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.replace((next?.startsWith("/admin") ? next : "/admin") as Route);
+      router.replace(next as Route);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not start your session");
     } finally {
@@ -57,28 +67,17 @@ export default function LoginPage() {
             </div>
           </div>
           <p className="mt-4 font-body text-sm leading-6 text-ink/58">
-            Use the work email connected to your heard account.
+            {productionAuth ? "Continue to Passage to securely access your heard workspace." : "Use the work email connected to your heard account."}
           </p>
 
           <form className="mt-8 space-y-5" onSubmit={signIn}>
-            <label className="block">
-              <span className="mb-2 block font-body text-sm font-semibold">Work email</span>
-              <input
-                autoComplete="email"
-                autoFocus
-                className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10"
-                name="email"
-                placeholder="you@restaurant.com"
-                required
-                type="email"
-              />
-            </label>
+            {!productionAuth ? <label className="block"><span className="mb-2 block font-body text-sm font-semibold">Work email</span><input autoComplete="email" autoFocus className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" name="email" placeholder="you@restaurant.com" required type="email" /></label> : <div className="rounded-2xl bg-[#f5efe6] px-4 py-4 font-body text-sm leading-6 text-ink/58">Passage will return you here after sign in, with the correct restaurant workspace context.</div>}
             {error ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</p> : null}
             <button className="flex h-14 w-full items-center justify-center rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.08em] text-white transition hover:bg-[#b95635] disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">
-              {busy ? "Signing you in..." : "Continue with email"}
+              {busy ? "Opening secure sign in..." : productionAuth ? "Continue with Passage" : "Continue with email"}
             </button>
           </form>
-          <p className="mt-6 text-center font-body text-sm leading-6 text-ink/48">New to heard? <Link className="font-semibold text-clay underline decoration-clay/35 underline-offset-4" href={"/contact" as Route}>See heard for your restaurant.</Link></p>
+          <p className="mt-6 text-center font-body text-sm leading-6 text-ink/48">New to heard? <Link className="font-semibold text-clay underline decoration-clay/35 underline-offset-4" href={"/start?source=direct" as Route}>Create your account.</Link></p>
         </section>
       </div>
     </main>

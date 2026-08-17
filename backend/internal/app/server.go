@@ -5,8 +5,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -18,6 +20,13 @@ type Server struct {
 
 type createLocalSessionRequest struct {
 	Email string `json:"email"`
+}
+
+type createOnboardingActivationRequest struct {
+	RestaurantName string `json:"restaurant_name"`
+	LocationName   string `json:"location_name"`
+	Timezone       string `json:"timezone"`
+	Source         string `json:"source"`
 }
 
 type createMarketingLeadRequest struct {
@@ -112,7 +121,10 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /api/v1/healthz", s.handleHealth)
 	mux.HandleFunc("POST /api/v1/marketing-leads", s.handleCreateMarketingLead)
 	mux.HandleFunc("POST /api/v1/auth/local/session", s.handleCreateLocalSession)
+	mux.HandleFunc("POST /api/v1/auth/local/registration", s.handleCreateLocalRegistration)
 	mux.HandleFunc("GET /api/v1/session", s.withIdentity("", s.handleGetSession))
+	mux.HandleFunc("GET /api/v1/onboarding", s.withIdentity("", s.handleGetOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/activations", s.withIdentity("tenant:create", s.handleActivateRestaurantWorkspace))
 	mux.HandleFunc("POST /api/v1/tenants", s.withIdentity("tenant:create", s.handleCreateTenant))
 	mux.HandleFunc("GET /api/v1/tenants/{id}", s.withAdminContext("tenant:read", s.handleGetTenant))
 	mux.HandleFunc("GET /api/v1/locations", s.withAdminContext("location:read", s.handleListLocations))
@@ -142,12 +154,18 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			origin = "*"
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Heard-Tenant-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Heard-Tenant-ID")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		log.Printf(`{"event":"http.request","request_id":%q,"method":%q,"path":%q}`, requestID, r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -228,8 +246,53 @@ func (s *Server) handleCreateLocalSession(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, session)
 }
 
+func (s *Server) handleCreateLocalRegistration(w http.ResponseWriter, r *http.Request) {
+	issuer, ok := s.identity.(localRegistrationIssuer)
+	if !ok {
+		writeError(w, http.StatusNotFound, "local Passage adapter is disabled")
+		return
+	}
+	var req createLocalSessionRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	session, err := issuer.IssueRegistration(req.Email)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("onboarding account resolved actor_id=%s provider=%s", session.Identity.UserID, session.Identity.Provider)
+	writeJSON(w, http.StatusCreated, session)
+}
+
 func (s *Server) handleGetSession(w http.ResponseWriter, _ *http.Request, ctx actorContext) {
 	writeJSON(w, http.StatusOK, ctx.Identity)
+}
+
+func (s *Server) handleGetOnboarding(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	state, err := s.store.GetOnboardingState(r.Context(), ctx.Identity)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (s *Server) handleActivateRestaurantWorkspace(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	var req createOnboardingActivationRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	state, err := s.store.ActivateRestaurantWorkspace(r.Context(), ctx.Identity, ctx.ActorRole, r.Header.Get("Idempotency-Key"), req)
+	if err != nil {
+		log.Printf("onboarding activation failed actor_id=%s provider=%s error=%q", ctx.ActorID, ctx.Identity.Provider, err.Error())
+		writeStoreError(w, err)
+		return
+	}
+	log.Printf("onboarding workspace activated actor_id=%s tenant_id=%s activation_id=%s next_step=%s", ctx.ActorID, state.Tenant.ID, state.ActivationID, state.NextStep)
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -279,7 +342,7 @@ func (s *Server) handleListLocations(w http.ResponseWriter, r *http.Request, ctx
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, collectionPayload(locations))
+	writeJSON(w, http.StatusOK, paginateCollection(locations, r))
 }
 
 func (s *Server) handleGetLocation(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -311,7 +374,7 @@ func (s *Server) handleListSurveyCampaigns(w http.ResponseWriter, r *http.Reques
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, collectionPayload(campaigns))
+	writeJSON(w, http.StatusOK, paginateCollection(campaigns, r))
 }
 
 func (s *Server) handleGetSurveyCampaign(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -398,7 +461,7 @@ func (s *Server) handleListFeedbackResponses(w http.ResponseWriter, r *http.Requ
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, collectionPayload(items))
+	writeJSON(w, http.StatusOK, paginateCollection(items, r))
 }
 
 func (s *Server) handleGetFeedbackResponse(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -416,7 +479,7 @@ func (s *Server) handleListRecoveryCases(w http.ResponseWriter, r *http.Request,
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, collectionPayload(items))
+	writeJSON(w, http.StatusOK, paginateCollection(items, r))
 }
 
 func (s *Server) handleGetRecoveryCase(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -455,7 +518,7 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "resource not found")
 	case errors.Is(err, errValidation):
 		writeError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), errValidation.Error()+": "))
-	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "already"):
+	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "already"), strings.Contains(err.Error(), "idempotency"):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -490,4 +553,27 @@ func collectionPayload[T any](items []T) map[string]any {
 		items = []T{}
 	}
 	return map[string]any{"items": items}
+}
+
+func paginateCollection[T any](items []T, r *http.Request) map[string]any {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return map[string]any{"items": []T{}, "page": page, "page_size": pageSize, "has_more": false}
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return map[string]any{"items": items[start:end], "page": page, "page_size": pageSize, "has_more": end < len(items)}
 }

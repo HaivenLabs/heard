@@ -69,6 +69,46 @@ type PublicSurvey struct {
 	Campaign SurveyCampaign `json:"campaign"`
 }
 
+type OnboardingState struct {
+	ActivationID string          `json:"activation_id,omitempty"`
+	Status       string          `json:"status"`
+	NextStep     string          `json:"next_step"`
+	Source       string          `json:"source,omitempty"`
+	Tenant       *Tenant         `json:"tenant,omitempty"`
+	Location     *Location       `json:"location,omitempty"`
+	Campaign     *SurveyCampaign `json:"campaign,omitempty"`
+	FeedbackLink *FeedbackLink   `json:"feedback_link,omitempty"`
+}
+
+func (s *OnboardingState) resolveProgress() {
+	s.Status = "in_progress"
+	s.NextStep = "workspace"
+	if s.ActivationID == "" || s.Tenant == nil || s.Location == nil {
+		s.Status = "not_started"
+		return
+	}
+	s.NextStep = "campaign"
+	if s.Campaign == nil {
+		return
+	}
+	s.NextStep = "feedback_link"
+	if s.FeedbackLink == nil {
+		return
+	}
+	s.Status = "complete"
+	s.NextStep = "complete"
+}
+
+type RestaurantWorkspaceActivatedEvent struct {
+	EventID      string    `json:"event_id"`
+	EventType    string    `json:"event_type"`
+	EventVersion int       `json:"event_version"`
+	TenantID     string    `json:"tenant_id"`
+	LocationID   string    `json:"location_id"`
+	ActivationID string    `json:"activation_id"`
+	OccurredAt   time.Time `json:"occurred_at"`
+}
+
 type FeedbackSession struct {
 	ID               string         `json:"id"`
 	TenantID         string         `json:"tenant_id"`

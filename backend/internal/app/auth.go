@@ -63,17 +63,25 @@ type localSessionIssuer interface {
 	IssueSession(email string) (Session, error)
 }
 
+type localRegistrationIssuer interface {
+	IssueRegistration(email string) (Session, error)
+}
+
 func NewIdentityProvider(cfg Config) (IdentityProvider, error) {
-	if cfg.PassageMode != "local" {
-		return nil, fmt.Errorf("PASSAGE_MODE %q is not configured; use local for development", cfg.PassageMode)
+	switch cfg.PassageMode {
+	case "jwks":
+		return newPassageJWKSProvider(cfg, nil, time.Now)
+	case "local":
+		if cfg.AppEnv == "production" {
+			return nil, errors.New("local Passage adapter cannot run in production")
+		}
+		if len(cfg.LocalPassageSecret) < 12 {
+			return nil, errors.New("LOCAL_PASSAGE_SECRET must be at least 12 characters")
+		}
+		return newLocalPassageProvider(cfg.LocalPassageSecret, time.Now), nil
+	default:
+		return nil, fmt.Errorf("unsupported PASSAGE_MODE %q", cfg.PassageMode)
 	}
-	if cfg.AppEnv == "production" {
-		return nil, errors.New("local Passage adapter cannot run in production")
-	}
-	if len(cfg.LocalPassageSecret) < 12 {
-		return nil, errors.New("LOCAL_PASSAGE_SECRET must be at least 12 characters")
-	}
-	return newLocalPassageProvider(cfg.LocalPassageSecret, time.Now), nil
 }
 
 type localPassageProvider struct {
@@ -97,6 +105,19 @@ func newLocalPassageProvider(secret string, now func() time.Time) *localPassageP
 }
 
 func (p *localPassageProvider) IssueSession(rawEmail string) (Session, error) {
+	return p.issueSession(rawEmail, demoTenantID)
+}
+
+func (p *localPassageProvider) IssueRegistration(rawEmail string) (Session, error) {
+	email := strings.ToLower(strings.TrimSpace(rawEmail))
+	if email == "" || !strings.Contains(email, "@") {
+		return Session{}, errors.New("a valid email is required")
+	}
+	tenantID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("local-passage-workspace:"+email)).String()
+	return p.issueSession(email, tenantID)
+}
+
+func (p *localPassageProvider) issueSession(rawEmail, tenantID string) (Session, error) {
 	email := strings.ToLower(strings.TrimSpace(rawEmail))
 	if email == "" || !strings.Contains(email, "@") {
 		return Session{}, errors.New("a valid email is required")
@@ -109,7 +130,7 @@ func (p *localPassageProvider) IssueSession(rawEmail string) (Session, error) {
 		Email:       email,
 		DisplayName: displayNameFromEmail(email),
 		Role:        "owner",
-		TenantIDs:   []string{demoTenantID},
+		TenantIDs:   []string{tenantID},
 		Permissions: []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"},
 		Provider:    "passage-local",
 	}
@@ -130,7 +151,7 @@ func (p *localPassageProvider) IssueSession(rawEmail string) (Session, error) {
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
 	token := "local." + encodedPayload + "." + p.sign(encodedPayload)
 
-	return Session{AccessToken: token, ExpiresAt: expiresAt, Identity: identity, TenantID: demoTenantID}, nil
+	return Session{AccessToken: token, ExpiresAt: expiresAt, Identity: identity, TenantID: tenantID}, nil
 }
 
 func (p *localPassageProvider) VerifyToken(_ context.Context, accessToken string) (Identity, error) {

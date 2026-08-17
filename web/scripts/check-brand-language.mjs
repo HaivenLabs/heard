@@ -22,6 +22,7 @@ assert.match(contact, />Try guest experience<\/Link>/);
 
 assert.match(adminShell, /brand-backdrop/);
 assert.match(publicHeader, />Try guest experience<\/Link>/);
-assert.match(publicHeader, />See heard for your restaurant<\/Link>/);
+assert.match(publicHeader, />Start using heard<\/Link>/);
+assert.match(publicHeader, />Walkthrough<\/Link>/);
 
 console.log("Shared brand language verified across public and admin surfaces.");

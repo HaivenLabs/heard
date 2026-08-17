@@ -3,32 +3,40 @@ package app
 import "os"
 
 type Config struct {
-	AppEnv               string
-	AppPort              string
-	DatabaseURL          string
-	PublicAppURL         string
-	WebBaseURL           string
-	AllowedOrigin        string
-	DemoSeedEnabled      bool
-	QURLBaseURL          string
-	PassageMode          string
-	LocalPassageSecret   string
-	WorkerPollIntervalMS int
+	AppEnv                  string
+	AppPort                 string
+	DatabaseURL             string
+	PublicAppURL            string
+	WebBaseURL              string
+	AllowedOrigin           string
+	DemoSeedEnabled         bool
+	QURLBaseURL             string
+	PassageMode             string
+	LocalPassageSecret      string
+	PassageBaseURL          string
+	PassageIssuer           string
+	PassageAudience         string
+	PassageJWKSCacheSeconds int
+	WorkerPollIntervalMS    int
 }
 
 func LoadConfig() Config {
 	return Config{
-		AppEnv:               getEnv("APP_ENV", "local"),
-		AppPort:              getEnv("APP_PORT", "8080"),
-		DatabaseURL:          getEnv("DATABASE_URL", "postgres://heard:heard@localhost:5432/heard?sslmode=disable"),
-		PublicAppURL:         getEnv("PUBLIC_APP_URL", "http://localhost:3010"),
-		WebBaseURL:           getEnv("WEB_BASE_URL", "http://localhost:3010"),
-		AllowedOrigin:        getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
-		DemoSeedEnabled:      getEnv("HEARD_SEED_DEMO", "true") == "true",
-		QURLBaseURL:          getEnv("QURL_BASE_URL", ""),
-		PassageMode:          getEnv("PASSAGE_MODE", "local"),
-		LocalPassageSecret:   getEnv("LOCAL_PASSAGE_SECRET", "heard-local-only-secret"),
-		WorkerPollIntervalMS: getEnvInt("WORKER_POLL_INTERVAL_MS", 1500),
+		AppEnv:                  getEnv("APP_ENV", "local"),
+		AppPort:                 getEnv("APP_PORT", "8080"),
+		DatabaseURL:             getEnv("DATABASE_URL", "postgres://heard:heard@localhost:5432/heard?sslmode=disable"),
+		PublicAppURL:            getEnv("PUBLIC_APP_URL", "http://localhost:3010"),
+		WebBaseURL:              getEnv("WEB_BASE_URL", "http://localhost:3010"),
+		AllowedOrigin:           getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
+		DemoSeedEnabled:         getEnv("HEARD_SEED_DEMO", "true") == "true",
+		QURLBaseURL:             getEnv("QURL_BASE_URL", ""),
+		PassageMode:             getEnv("PASSAGE_MODE", "local"),
+		LocalPassageSecret:      getEnv("LOCAL_PASSAGE_SECRET", "heard-local-only-secret"),
+		PassageBaseURL:          getEnv("PASSAGE_BASE_URL", "http://localhost:8081"),
+		PassageIssuer:           getEnv("PASSAGE_ISSUER", "http://localhost:8081"),
+		PassageAudience:         getEnv("PASSAGE_AUDIENCE", "heard"),
+		PassageJWKSCacheSeconds: getEnvInt("PASSAGE_JWKS_CACHE_SECONDS", 300),
+		WorkerPollIntervalMS:    getEnvInt("WORKER_POLL_INTERVAL_MS", 1500),
 	}
 }
 

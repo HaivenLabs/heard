@@ -31,7 +31,7 @@ As an existing restaurant customer, I can sign in, see my workspace, and start b
 
 ## API contract
 
-The canonical contract is `docs/openapi.slice1.yaml`, version `0.4.0`.
+The canonical contract is `docs/openapi.slice1.yaml`, version `0.5.0`.
 
 - `POST /api/v1/auth/local/session` issues a development-only session when `PASSAGE_MODE=local`.
 - `GET /api/v1/session` resolves the authenticated identity.
@@ -52,6 +52,8 @@ Heard consumes this provider-neutral identity shape:
 - identity provider name
 
 The local adapter is a fake provider behind the same interface intended for Passage. It maps every valid local email to the seeded demo tenant and grants the owner role. It cannot be enabled when `APP_ENV=production`.
+
+Slice 6A adds a separate local registration operation that deterministically resolves a dedicated account context for each email. Existing-customer local sign-in continues to use the seeded tenant so the demo and returning-customer workflow remain stable.
 
 ## Data model
 

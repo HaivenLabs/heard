@@ -175,6 +175,8 @@ docker compose up --build
 Then open:
 
 - `http://localhost:3010` for the web app
+- `http://localhost:3010/start` to create a local self-service account context
+- `http://localhost:3010/onboarding` to resume restaurant, location, and first-campaign setup
 - `http://localhost:3010/contact` for the optional walkthrough journey
 - `http://localhost:3010/api/v1/healthz` for the same-origin API health endpoint
 - `http://localhost:3010/login` for existing-customer sign-in
@@ -189,9 +191,13 @@ Default seeded tenant header:
 11111111-1111-1111-1111-111111111111
 ```
 
-`/contact` records an optional request for a tailored walkthrough; it is not intended to gate product access. The implemented `/login` path currently serves existing customers. Slice 6 defines the primary self-service journey from Passage-owned registration through restaurant workspace, first location, and first campaign activation. In local development, any valid email exercises the management workflow through a development-only identity adapter and a seeded tenant. The adapter is rejected when `APP_ENV=production`; production registration, sessions, tenant membership, roles, and permissions remain owned by Passage.
+`/start` is the primary local self-service journey. Any valid email resolves a deterministic, dedicated account context through the development-only Passage adapter; onboarding then creates or resumes the restaurant workspace and first location and carries the operator into a ready-to-share first campaign. Retries are idempotent, and a qurl outage does not prevent the feedback link from working. Existing-customer `/login` continues to use the seeded demo tenant.
+
+`/contact` remains an optional request for a tailored walkthrough and never gates product access. The local Passage adapter is rejected when `APP_ENV=production`. Production deployments use `PASSAGE_MODE=jwks`: Heard verifies Passage EdDSA product tokens using `PASSAGE_BASE_URL`, requires the exact `PASSAGE_ISSUER`, `PASSAGE_AUDIENCE=heard`, expiry, UUID subject/organization, recognized role, and a `heard` product grant. JWKS responses are cached for `PASSAGE_JWKS_CACHE_SECONDS` and refreshed immediately on signing-key rotation.
 
 Browser traffic uses the Heard origin at `http://localhost:3010/api/*`. Next.js forwards those requests over the Docker network to the Go API; port `8080` remains exposed only for direct API development and debugging.
+
+Run checks directly with `go test ./...` from `backend`, and `npm test`, `npm run lint`, and `npm run build` from `web`. PostgreSQL concurrency coverage for onboarding runs when `HEARD_TEST_DATABASE_URL` is set.
 
 Reference docs:
 

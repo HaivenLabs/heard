@@ -1,5 +1,11 @@
 # Slice 6: Self-service restaurant onboarding
 
+## Implementation status
+
+Slice 6 implements the complete local/self-hostable product workflow and the production Passage identity boundary: account context resolution, idempotent restaurant and first-location activation, resumable first-campaign creation, feedback-link handoff, qurl degradation, primary public calls to action, audit coverage, and the `restaurant-workspace-activated` outbox event.
+
+In production, Heard verifies Passage-issued EdDSA product tokens against Passage JWKS and requires the configured issuer, the `heard` audience and product grant, an unexpired token, UUID subject and organization claims, and a recognized organization role. Heard derives tenant context and product permissions only from those verified claims. The local registration endpoint remains explicitly non-production.
+
 ## Goal
 
 Let a restaurant operator start using heard immediately without speaking to sales. The primary public journey must create an account through Passage, establish the first restaurant workspace and location, and carry the operator directly into a guided first campaign. The walkthrough remains available as optional help.
@@ -39,7 +45,7 @@ The OpenAPI contract must be updated before implementation. The minimum heard-ow
 - Return explicit onboarding state and the next incomplete step.
 - Reuse the existing campaign APIs rather than creating a separate onboarding-only campaign model.
 
-The exact Passage exchange must follow Passage's published contract. A local fake may exercise the workflow in development but must remain impossible to enable in production.
+The production exchange follows Passage's published short-lived product-token and JWKS contract. The local fake continues to exercise onboarding through `POST /api/v1/auth/local/registration` and remains impossible to enable in production.
 
 ## Data model
 
@@ -102,3 +108,5 @@ Activation state and outbox records must be committed atomically where downstrea
 - The walkthrough is visibly optional.
 - Product and local-run documentation match the implemented journey.
 - `haiven check` passes.
+
+Passage hosts registration, browser sessions, verification, recovery, organization membership, and product grants. Heard accepts only Passage's short-lived `aud=heard` product token at its API boundary; signing-key rotation is handled by bounded JWKS caching and forced refresh after signature/key mismatch.

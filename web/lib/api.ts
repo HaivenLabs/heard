@@ -138,20 +138,63 @@ export type Session = {
   tenant_id: string;
 };
 
+export type OnboardingState = {
+  activation_id?: string;
+  status: "not_started" | "in_progress" | "complete";
+  next_step: "workspace" | "campaign" | "feedback_link" | "complete";
+  source?: "homepage" | "guest_demo" | "direct";
+  tenant?: Tenant;
+  location?: Location;
+  campaign?: SurveyCampaign;
+  feedback_link?: FeedbackLink;
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+const PASSAGE_HOSTED_URL = process.env.NEXT_PUBLIC_PASSAGE_HOSTED_URL ?? "";
 export const DEMO_TENANT_ID = process.env.NEXT_PUBLIC_DEMO_TENANT_ID ?? "11111111-1111-1111-1111-111111111111";
+
+/** Local bearer sessions are intentionally unavailable in production. */
+export function isProductionAuth(): boolean {
+  return process.env.NEXT_PUBLIC_APP_ENV === "production" || process.env.NODE_ENV === "production";
+}
+
+export function safeReturnTo(value: string | null | undefined, fallback = "/admin"): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return fallback;
+  return value;
+}
+
+export function passageHostedUrl(action: "login" | "signup", returnTo: string): string {
+  if (!PASSAGE_HOSTED_URL) {
+    throw new Error("Passage account setup is not configured yet. Please try again shortly.");
+  }
+  let base: URL;
+  try {
+    base = new URL(PASSAGE_HOSTED_URL);
+  } catch {
+    throw new Error("Passage account setup is not configured correctly.");
+  }
+  if (base.protocol !== "https:" && base.protocol !== "http:") {
+    throw new Error("Passage account setup is not configured correctly.");
+  }
+  const path = action === "signup" ? "/signup" : "/login";
+  const target = new URL(path, base);
+  target.searchParams.set("product", "heard");
+  target.searchParams.set("return_to", safeReturnTo(returnTo));
+  return target.toString();
+}
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;
   tenantId?: string;
   auth?: boolean;
+  idempotencyKey?: string;
 };
 
 const SESSION_STORAGE_KEY = "heard-session-v1";
 
 export function getStoredSession(): Session | null {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || isProductionAuth()) {
     return null;
   }
   const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -188,17 +231,20 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     headers: {
       "Content-Type": "application/json",
       ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
       ...(options.tenantId ? { "X-Heard-Tenant-ID": options.tenantId } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-    cache: "no-store"
+    cache: "no-store",
+    credentials: "include"
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
     if (response.status === 401 && options.auth !== false && typeof window !== "undefined") {
       clearStoredSession();
-      const next = window.location.pathname.startsWith("/admin") ? window.location.pathname : "/admin";
+      const requested = `${window.location.pathname}${window.location.search}`;
+      const next = requested.startsWith("/admin") || requested.startsWith("/onboarding") ? requested : "/admin";
       window.location.assign(`/login?next=${encodeURIComponent(next)}`);
     }
     throw new Error(payload?.error?.message ?? `Request failed with ${response.status}`);
@@ -209,6 +255,16 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
 export async function createLocalSession(email: string): Promise<Session> {
   const session = await apiFetch<Session>("/api/v1/auth/local/session", {
+    method: "POST",
+    auth: false,
+    body: { email }
+  });
+  storeSession(session);
+  return session;
+}
+
+export async function createLocalRegistration(email: string): Promise<Session> {
+  const session = await apiFetch<Session>("/api/v1/auth/local/registration", {
     method: "POST",
     auth: false,
     body: { email }

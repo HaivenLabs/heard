@@ -19,10 +19,10 @@ export default function HomePage() {
             <p className="mt-7 max-w-2xl font-display text-2xl leading-tight tracking-[-0.03em] text-clay sm:text-3xl">Fix the visit before it becomes the review.</p>
             <p className="mt-5 max-w-2xl font-body text-lg leading-8 text-ink/62">heard gives restaurants a guest feedback experience people actually finish, then turns every rough visit into a clear recovery task while the relationship can still be saved.</p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
-              <Link className="rounded-full bg-clay px-7 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_16px_36px_rgba(203,104,67,0.28)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/contact" as Route}>See heard for your restaurant</Link>
+              <Link className="rounded-full bg-clay px-7 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_16px_36px_rgba(203,104,67,0.28)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/start?source=homepage" as Route}>Start using heard</Link>
               <Link className="rounded-full border border-ink/15 bg-white/45 px-7 py-4 font-body text-sm font-semibold transition hover:border-ink/35 hover:bg-white/75" href="/f/demo-heard">Try guest experience</Link>
             </div>
-            <p className="mt-4 font-body text-sm text-ink/42">A restaurant-specific walkthrough. No generic sales maze.</p>
+            <p className="mt-4 font-body text-sm text-ink/42">Set up one location and launch your first campaign. No call or approval required.</p>
           </div>
 
           <div className="relative mx-auto w-full max-w-lg lg:mr-0">
@@ -36,7 +36,7 @@ export default function HomePage() {
                 <span className="rounded-full bg-[#9fba73]/15 px-3 py-1.5 font-body text-xs font-semibold text-[#c4d99d]">Just received</span>
               </div>
               <div className="mt-8 grid grid-cols-5 gap-2">
-                {ratingValues.map((rating) => <RatingFace className={`w-full overflow-visible ${rating === 2 ? "drop-shadow-[0_0_12px_rgba(247,194,111,0.25)]" : "opacity-45"}`} key={rating} rating={rating} />)}
+                {ratingValues.map((rating) => <RatingFace className={`w-full overflow-visible ${rating === 3 ? "drop-shadow-[0_0_12px_rgba(247,194,111,0.25)]" : "opacity-45"}`} key={rating} rating={rating} />)}
               </div>
               <div className="mt-7 rounded-[1.5rem] border border-clay/28 bg-clay/10 p-5">
                 <div className="flex items-center justify-between gap-3">
@@ -85,11 +85,12 @@ export default function HomePage() {
         <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_1px_1px,rgba(247,241,227,0.13)_1px,transparent_0)] [background-size:30px_30px]" />
         <div className="relative mx-auto flex max-w-5xl flex-col items-center text-center">
           <p className="font-body text-xs font-bold uppercase tracking-[0.26em] text-clay">Make the next rough visit recoverable</p>
-          <h2 className="mt-5 font-display text-5xl tracking-[-0.055em] sm:text-7xl">See heard with your restaurant in mind.</h2>
-          <p className="mt-6 max-w-2xl font-body text-lg leading-8 text-parchment/62">Tell us how many locations you run and what you want to fix. We&apos;ll shape the walkthrough around that.</p>
-          <Link className="mt-9 rounded-full bg-clay px-8 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/contact" as Route}>Request a walkthrough</Link>
+          <h2 className="mt-5 font-display text-5xl tracking-[-0.055em] sm:text-7xl">Put heard to work tonight.</h2>
+          <p className="mt-6 max-w-2xl font-body text-lg leading-8 text-parchment/62">Create your restaurant workspace, add one location, and leave with a guest-ready feedback link.</p>
+          <Link className="mt-9 rounded-full bg-clay px-8 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/start?source=homepage" as Route}>Start using heard</Link>
           <div className="mt-12 flex flex-wrap justify-center gap-5 font-body text-sm text-parchment/45">
             <Link className="hover:text-parchment" href="/f/demo-heard">Guest demo</Link>
+            <Link className="hover:text-parchment" href={"/contact#walkthrough" as Route}>Request a walkthrough</Link>
             <Link className="hover:text-parchment" href="/login">Customer sign in</Link>
           </div>
         </div>

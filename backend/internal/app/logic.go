@@ -183,6 +183,35 @@ func shouldCreateRecoveryCaseForResponse(response FeedbackResponse) bool {
 	return shouldCreateRecoveryCase(response.Rating, response.Sentiment)
 }
 
+// recoveryStatusTransitionAllowed keeps case state changes explicit and prevents
+// terminal cases from being silently reopened.
+func recoveryStatusTransitionAllowed(from, to string) bool {
+	if from == to {
+		return true
+	}
+	allowed := map[string]map[string]bool{
+		"new":                        {"open": true, "assigned": true, "spam": true, "duplicate": true, "archived": true},
+		"open":                       {"assigned": true, "waiting_on_guest": true, "waiting_on_internal_action": true, "offer_pending": true, "resolved": true, "closed": true, "spam": true, "duplicate": true},
+		"assigned":                   {"waiting_on_guest": true, "waiting_on_internal_action": true, "offer_pending": true, "resolved": true, "closed": true, "spam": true, "duplicate": true},
+		"waiting_on_guest":           {"open": true, "assigned": true, "offer_pending": true, "resolved": true, "closed": true},
+		"waiting_on_internal_action": {"open": true, "assigned": true, "offer_pending": true, "resolved": true, "closed": true},
+		"offer_pending":              {"open": true, "assigned": true, "waiting_on_guest": true, "resolved": true, "closed": true},
+	}
+	return allowed[from][to]
+}
+
+func enforceCampaignMetadata(metadata map[string]any, flyer bool, rating int) map[string]any {
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	if flyer {
+		metadata["campaign_type"] = "flyer_giveaway"
+		metadata["follow_up_required"] = rating < 5
+		metadata["public_review_prompt"] = rating == 5
+	}
+	return metadata
+}
+
 func recoveryReasonForResponse(response FeedbackResponse) string {
 	if response.Metadata["campaign_type"] == "flyer_giveaway" && response.Rating < 5 {
 		return "flyer_giveaway_under_five_follow_up"

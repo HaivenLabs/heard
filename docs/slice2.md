@@ -26,6 +26,7 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 - Campaign is the attribution context.
 - Phone or email is required for giveaway entry.
 - Marketing consent is separate from transactional follow-up.
+- Giveaway entry requires explicit transactional-contact consent; this consent permits Heard/the restaurant to contact the guest about the submitted experience and entry. Marketing consent remains a separate optional choice.
 - Public review prompting only happens after a 5 rating.
 - Anything below 5 is follow-up required.
 - Guests can change their rating before submission without losing entered details.

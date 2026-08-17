@@ -163,6 +163,180 @@ func (s *Store) GetTenant(ctx context.Context, tenantID string) (Tenant, error) 
 	return tenant, err
 }
 
+func (s *Store) GetOnboardingState(ctx context.Context, identity Identity) (OnboardingState, error) {
+	state := OnboardingState{}
+	var tenant Tenant
+	var location Location
+	err := s.pool.QueryRow(ctx, `
+		select a.id::text, a.source,
+			t.id::text, t.name, t.slug, t.created_at,
+			l.id::text, l.tenant_id::text, l.name, l.slug, l.timezone, l.created_at
+		from onboarding_activations a
+		join tenants t on t.id = a.tenant_id
+		join locations l on l.id = a.location_id and l.tenant_id = a.tenant_id
+		where a.actor_provider = $1 and a.actor_id = $2
+	`, identity.Provider, identity.UserID).Scan(
+		&state.ActivationID, &state.Source,
+		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.CreatedAt,
+		&location.ID, &location.TenantID, &location.Name, &location.Slug, &location.Timezone, &location.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		for _, tenantID := range identity.TenantIDs {
+			existingTenant, tenantErr := s.GetTenant(ctx, tenantID)
+			if tenantErr == nil {
+				locations, locationsErr := s.ListLocations(ctx, tenantID)
+				if locationsErr != nil {
+					return OnboardingState{}, locationsErr
+				}
+				if len(locations) > 0 {
+					state.Tenant = &existingTenant
+					state.Location = &locations[0]
+					state.Status = "complete"
+					state.NextStep = "complete"
+					return state, nil
+				}
+			}
+			if !errors.Is(tenantErr, pgx.ErrNoRows) {
+				return OnboardingState{}, tenantErr
+			}
+		}
+		state.resolveProgress()
+		return state, nil
+	}
+	if err != nil {
+		return OnboardingState{}, err
+	}
+	state.Tenant = &tenant
+	state.Location = &location
+
+	campaigns, err := s.ListSurveyCampaigns(ctx, tenant.ID)
+	if err != nil {
+		return OnboardingState{}, err
+	}
+	for index := len(campaigns) - 1; index >= 0; index-- {
+		if campaigns[index].LocationID == location.ID {
+			campaign := campaigns[index]
+			state.Campaign = &campaign
+			break
+		}
+	}
+	if state.Campaign != nil {
+		link := FeedbackLink{}
+		err = s.pool.QueryRow(ctx, `
+			select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, status, channel,
+				qr_asset_url, qr_svg, destination_url, created_at
+			from feedback_links
+			where tenant_id = $1 and campaign_id = $2
+			order by created_at asc
+			limit 1
+		`, tenant.ID, state.Campaign.ID).Scan(
+			&link.ID, &link.TenantID, &link.LocationID, &link.CampaignID, &link.Name, &link.Token, &link.Status,
+			&link.Channel, &link.QRAssetURL, &link.QRSVG, &link.Destination, &link.CreatedAt,
+		)
+		if err == nil {
+			state.FeedbackLink = &link
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return OnboardingState{}, err
+		}
+	}
+	state.resolveProgress()
+	return state, nil
+}
+
+func (s *Store) ActivateRestaurantWorkspace(ctx context.Context, identity Identity, actorRole, idempotencyKey string, req createOnboardingActivationRequest) (OnboardingState, error) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if len(idempotencyKey) < 8 || len(idempotencyKey) > 200 {
+		return OnboardingState{}, errors.New("idempotency key must be between 8 and 200 characters")
+	}
+	req.RestaurantName = strings.TrimSpace(req.RestaurantName)
+	req.LocationName = strings.TrimSpace(req.LocationName)
+	req.Timezone = defaultString(strings.TrimSpace(req.Timezone), "America/Los_Angeles")
+	req.Source = defaultString(strings.TrimSpace(req.Source), "direct")
+	if req.RestaurantName == "" || req.LocationName == "" {
+		return OnboardingState{}, errors.New("restaurant and location names are required")
+	}
+	switch req.Source {
+	case "homepage", "guest_demo", "direct":
+	default:
+		return OnboardingState{}, errors.New("invalid onboarding source")
+	}
+	if identity.UserID == "" || identity.Provider == "" || len(identity.TenantIDs) != 1 {
+		return OnboardingState{}, errors.New("a single verified Passage account context is required")
+	}
+	tenantID := identity.TenantIDs[0]
+	if _, err := uuid.Parse(tenantID); err != nil {
+		return OnboardingState{}, errors.New("verified Passage account context is invalid")
+	}
+
+	existing, err := s.GetOnboardingState(ctx, identity)
+	if err != nil {
+		return OnboardingState{}, err
+	}
+	if existing.ActivationID != "" {
+		return existing, nil
+	}
+
+	activationID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("heard-onboarding:"+identity.Provider+":"+identity.UserID)).String()
+	locationID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("heard-first-location:"+tenantID)).String()
+	eventID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("heard-workspace-activated:"+activationID)).String()
+	now := time.Now().UTC()
+	tenantSlug := fmt.Sprintf("%s-%s", slugify("", req.RestaurantName), strings.ToLower(tenantID[:8]))
+	locationSlug := slugify("", req.LocationName)
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return OnboardingState{}, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		insert into tenants (id, name, slug) values ($1, $2, $3)
+		on conflict (id) do nothing
+	`, tenantID, req.RestaurantName, tenantSlug); err != nil {
+		return OnboardingState{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into locations (id, tenant_id, name, slug, timezone) values ($1, $2, $3, $4, $5)
+		on conflict (id) do nothing
+	`, locationID, tenantID, req.LocationName, locationSlug, req.Timezone); err != nil {
+		return OnboardingState{}, err
+	}
+	result, err := tx.Exec(ctx, `
+		insert into onboarding_activations (id, actor_provider, actor_id, idempotency_key, tenant_id, location_id, source)
+		values ($1, $2, $3, $4, $5, $6, $7)
+		on conflict (actor_provider, actor_id) do nothing
+	`, activationID, identity.Provider, identity.UserID, idempotencyKey, tenantID, locationID, req.Source)
+	if err != nil {
+		return OnboardingState{}, err
+	}
+	if result.RowsAffected() == 1 {
+		event := RestaurantWorkspaceActivatedEvent{
+			EventID: eventID, EventType: "restaurant-workspace-activated", EventVersion: 1,
+			TenantID: tenantID, LocationID: locationID, ActivationID: activationID, OccurredAt: now,
+		}
+		payload, err := json.Marshal(event)
+		if err != nil {
+			return OnboardingState{}, err
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into outbox_events (id, tenant_id, event_type, event_version, aggregate_type, aggregate_id, payload, occurred_at)
+			values ($1, $2, $3, $4, 'onboarding_activation', $5, $6, $7)
+			on conflict (id) do nothing
+		`, event.EventID, event.TenantID, event.EventType, event.EventVersion, activationID, payload, event.OccurredAt); err != nil {
+			return OnboardingState{}, err
+		}
+		if err := s.writeAudit(ctx, tx, tenantID, identity.UserID, actorRole, "restaurant_workspace.activated", "onboarding_activation", activationID, map[string]any{
+			"location_id": locationID,
+			"source":      req.Source,
+		}); err != nil {
+			return OnboardingState{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OnboardingState{}, err
+	}
+	return s.GetOnboardingState(ctx, identity)
+}
+
 func (s *Store) CreateLocation(ctx context.Context, tenantID, actorID, actorRole string, req createLocationRequest) (Location, error) {
 	if tenantID == "" || tenantID != req.TenantID {
 		return Location{}, errors.New("tenant mismatch")
@@ -523,6 +697,20 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 	if err := json.Unmarshal(rawMetadata, &session.Metadata); err != nil {
 		session.Metadata = map[string]any{}
 	}
+	// Campaign classification is authoritative server state. Never trust public
+	// metadata to opt a flyer campaign out of its contact/recovery rules.
+	var flyerCampaign bool
+	if session.FeedbackLinkID != "" {
+		err = tx.QueryRow(ctx, `
+			select exists(
+				select 1 from feedback_links fl
+				join survey_campaigns sc on sc.id = fl.campaign_id
+				where fl.id = $1 and fl.status = 'active'
+			)`, session.FeedbackLinkID).Scan(&flyerCampaign)
+		if err != nil {
+			return FeedbackResponse{}, err
+		}
+	}
 
 	categories := req.Categories
 	if categories == nil {
@@ -549,9 +737,18 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 		Metadata:          mergeMetadata(session.Metadata, req.Metadata),
 		SubmittedAt:       time.Now().UTC(),
 	}
-	requiresContact := response.Metadata["campaign_type"] == "flyer_giveaway"
+	if flyerCampaign {
+		response.Metadata = enforceCampaignMetadata(response.Metadata, true, response.Rating)
+	}
+	requiresContact := flyerCampaign
 	if err := validateContactDetails(response.GuestEmail, response.GuestPhone, requiresContact); err != nil {
 		return FeedbackResponse{}, err
+	}
+	if flyerCampaign && !response.ContactConsent {
+		return FeedbackResponse{}, validationError("transactional contact consent is required for giveaway entry")
+	}
+	if flyerCampaign && response.Rating < 5 && len(response.Comment) < 3 {
+		return FeedbackResponse{}, validationError("tell us a little about what happened")
 	}
 
 	categoriesJSON, err := json.Marshal(response.Categories)
@@ -805,6 +1002,14 @@ func (s *Store) UpdateRecoveryCaseStatus(ctx context.Context, tenantID, actorID,
 		return RecoveryCase{}, errors.New("invalid recovery case status")
 	}
 
+	var currentStatus string
+	if err := s.pool.QueryRow(ctx, `select status from recovery_cases where id = $1 and tenant_id = $2`, caseID, tenantID).Scan(&currentStatus); err != nil {
+		return RecoveryCase{}, err
+	}
+	if !recoveryStatusTransitionAllowed(currentStatus, status) {
+		return RecoveryCase{}, errors.New("invalid recovery case status transition")
+	}
+
 	item := RecoveryCase{}
 	err := s.pool.QueryRow(ctx, `
 		update recovery_cases
@@ -845,15 +1050,16 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 
 	var eventID string
 	var tenantID string
+	var eventType string
 	var payload []byte
 	err = tx.QueryRow(ctx, `
-		select id::text, tenant_id::text, payload
+		select id::text, tenant_id::text, event_type, payload
 		from outbox_events
 		where status = 'pending' and available_at <= now()
 		order by created_at asc
 		limit 1
 		for update skip locked
-	`).Scan(&eventID, &tenantID, &payload)
+	`).Scan(&eventID, &tenantID, &eventType, &payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -868,9 +1074,53 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 	`, eventID); err != nil {
 		return false, err
 	}
+	retry := func(processErr error) (bool, error) {
+		_, updateErr := tx.Exec(ctx, `
+			update outbox_events
+			set status = case when attempts >= 8 then 'failed' else 'pending' end,
+				available_at = now() + make_interval(secs => least(3600, greatest(5, attempts * attempts * 5))),
+				last_error = $2
+			where id = $1
+		`, eventID, processErr.Error())
+		if updateErr != nil {
+			return false, updateErr
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return false, commitErr
+		}
+		return true, processErr
+	}
+
+	if eventType == "restaurant-workspace-activated" {
+		var event RestaurantWorkspaceActivatedEvent
+		if err := json.Unmarshal(payload, &event); err != nil || event.ActivationID == "" {
+			if err == nil {
+				err = errors.New("workspace activation event is incomplete")
+			}
+			_, _ = tx.Exec(ctx, `update outbox_events set status = 'failed', last_error = $2 where id = $1`, eventID, err.Error())
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return false, commitErr
+			}
+			return true, nil
+		}
+		if _, err := tx.Exec(ctx, `
+			update outbox_events set status = 'processed', processed_at = now(), last_error = '' where id = $1
+		`, eventID); err != nil {
+			return false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 
 	var event FeedbackSubmittedEvent
-	if err := json.Unmarshal(payload, &event); err != nil {
+	if eventType != "feedback-submitted" {
+		err = fmt.Errorf("unsupported event type %q", eventType)
+	} else {
+		err = json.Unmarshal(payload, &event)
+	}
+	if err != nil {
 		_, _ = tx.Exec(ctx, `update outbox_events set status = 'failed', last_error = $2 where id = $1`, eventID, err.Error())
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return false, commitErr
@@ -880,13 +1130,13 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 
 	response, err := s.GetFeedbackResponse(ctx, event.TenantID, event.FeedbackResponseID)
 	if err != nil {
-		return false, err
+		return retry(err)
 	}
 
 	if shouldCreateRecoveryCaseForResponse(response) {
 		var exists bool
 		if err := tx.QueryRow(ctx, `select exists(select 1 from recovery_cases where feedback_response_id = $1)`, event.FeedbackResponseID).Scan(&exists); err != nil {
-			return false, err
+			return retry(err)
 		}
 		if !exists {
 			if _, err := tx.Exec(ctx, `
@@ -898,12 +1148,12 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 			`, uuid.NewString(), response.TenantID, response.LocationID, response.ID, priorityFromSentiment(response.Sentiment), response.Sentiment,
 				response.Rating, response.GuestName, response.GuestPhone, response.GuestEmail, previewComment(response.Comment), recoveryReasonForResponse(response),
 			); err != nil {
-				return false, err
+				return retry(err)
 			}
 			if err := s.writeAudit(ctx, tx, tenantID, "worker", "system", "recovery_case.created", "feedback_response", response.ID, map[string]any{
 				"reason": recoveryReasonForResponse(response),
 			}); err != nil {
-				return false, err
+				return retry(err)
 			}
 		}
 	}

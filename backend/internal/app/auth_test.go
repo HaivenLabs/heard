@@ -34,6 +34,31 @@ func TestLocalPassageIssuesAndVerifiesSession(t *testing.T) {
 	}
 }
 
+func TestLocalPassageRegistrationCreatesDedicatedAccountContext(t *testing.T) {
+	provider := newLocalPassageProvider("test-secret", func() time.Time {
+		return time.Date(2026, time.August, 16, 12, 0, 0, 0, time.UTC)
+	})
+
+	session, err := provider.IssueRegistration("new-owner@cedar.test")
+	if err != nil {
+		t.Fatalf("issue registration: %v", err)
+	}
+	if session.TenantID == "" || session.TenantID == demoTenantID {
+		t.Fatalf("expected a dedicated local Passage account context, got %q", session.TenantID)
+	}
+	if !session.Identity.HasTenant(session.TenantID) {
+		t.Fatal("expected registration identity to carry its local Passage tenant membership")
+	}
+
+	retry, err := provider.IssueRegistration("NEW-OWNER@CEDAR.TEST")
+	if err != nil {
+		t.Fatalf("retry registration: %v", err)
+	}
+	if retry.TenantID != session.TenantID {
+		t.Fatalf("registration context changed across retry: %q != %q", retry.TenantID, session.TenantID)
+	}
+}
+
 func TestLocalPassageRejectsTamperedToken(t *testing.T) {
 	provider := newLocalPassageProvider("test-secret", time.Now)
 	session, err := provider.IssueSession("owner@northstar.test")
@@ -112,6 +137,24 @@ func TestLocalPassageCannotRunInProduction(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected local Passage mode to be rejected in production")
+	}
+}
+
+func TestOnboardingNextStep(t *testing.T) {
+	tests := []struct {
+		state OnboardingState
+		want  string
+	}{
+		{state: OnboardingState{}, want: "workspace"},
+		{state: OnboardingState{ActivationID: "activation", Tenant: &Tenant{}, Location: &Location{}}, want: "campaign"},
+		{state: OnboardingState{ActivationID: "activation", Tenant: &Tenant{}, Location: &Location{}, Campaign: &SurveyCampaign{}}, want: "feedback_link"},
+		{state: OnboardingState{ActivationID: "activation", Tenant: &Tenant{}, Location: &Location{}, Campaign: &SurveyCampaign{}, FeedbackLink: &FeedbackLink{}}, want: "complete"},
+	}
+	for _, item := range tests {
+		item.state.resolveProgress()
+		if item.state.NextStep != item.want {
+			t.Fatalf("got next step %q, want %q", item.state.NextStep, item.want)
+		}
 	}
 }
 

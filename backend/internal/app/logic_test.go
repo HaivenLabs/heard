@@ -76,6 +76,29 @@ func TestValidateContactDetailsRejectsInvalidFormats(t *testing.T) {
 	}
 }
 
+func TestValidateContactDetailsAllowsOptionalContactForNonGiveaway(t *testing.T) {
+	if err := validateContactDetails("", "", false); err != nil {
+		t.Fatalf("optional contact rejected: %v", err)
+	}
+}
+
+func TestValidateContactDetailsRequiresOnlyOneGiveawayContactMethod(t *testing.T) {
+	for _, item := range []struct {
+		name  string
+		email string
+		phone string
+	}{
+		{name: "email", email: "guest@example.com"},
+		{name: "phone", phone: "(206) 555-0142"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			if err := validateContactDetails(item.email, item.phone, true); err != nil {
+				t.Fatalf("valid giveaway contact rejected: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateMarketingLeadRequestAcceptsRestaurantProspect(t *testing.T) {
 	req := createMarketingLeadRequest{
 		Name:           "Avery Chen",
@@ -191,5 +214,26 @@ func TestPreviewComment(t *testing.T) {
 	long := "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
 	if got := previewComment(long); len(got) != 140 {
 		t.Fatalf("expected 140-char preview, got %d", len(got))
+	}
+}
+
+func TestRecoveryStatusTransitionMatrix(t *testing.T) {
+	allowed := [][2]string{{"new", "open"}, {"open", "assigned"}, {"assigned", "resolved"}, {"open", "closed"}}
+	for _, transition := range allowed {
+		if !recoveryStatusTransitionAllowed(transition[0], transition[1]) {
+			t.Fatalf("expected %s -> %s to be allowed", transition[0], transition[1])
+		}
+	}
+	for _, transition := range [][2]string{{"resolved", "open"}, {"closed", "assigned"}, {"spam", "open"}, {"new", "resolved"}} {
+		if recoveryStatusTransitionAllowed(transition[0], transition[1]) {
+			t.Fatalf("expected %s -> %s to be rejected", transition[0], transition[1])
+		}
+	}
+}
+
+func TestServerCampaignMetadataCannotOptOutOfFlyerRules(t *testing.T) {
+	metadata := enforceCampaignMetadata(map[string]any{"campaign_type": "other", "follow_up_required": false, "public_review_prompt": true}, true, 4)
+	if metadata["campaign_type"] != "flyer_giveaway" || metadata["follow_up_required"] != true || metadata["public_review_prompt"] != false {
+		t.Fatalf("server rules were not enforced: %#v", metadata)
 	}
 }

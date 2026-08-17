@@ -9,6 +9,7 @@ type RouteContext = {
 const FORWARDED_REQUEST_HEADERS = [
   "authorization",
   "content-type",
+  "idempotency-key",
   "traceparent",
   "x-heard-tenant-id",
   "x-request-id"
