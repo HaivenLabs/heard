@@ -1,8 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { AdminShell } from "../../../components/admin-shell";
-import { AuthGate } from "../../../components/auth-gate";
+import { useAdminSession } from "../../../components/admin-session";
 import { RatingFace, RatingValue } from "../../../components/rating-face";
 import { apiFetch, FeedbackLink, Location, Session, SurveyCampaign } from "../../../lib/api";
 
@@ -19,7 +18,8 @@ const defaultCampaign = {
 };
 
 export default function CampaignBuilderPage() {
-  return <AuthGate>{(session) => <CampaignBuilder session={session} />}</AuthGate>;
+  const session = useAdminSession();
+  return <CampaignBuilder session={session} />;
 }
 
 function CampaignBuilder({ session }: { session: Session }) {
@@ -84,8 +84,7 @@ function CampaignBuilder({ session }: { session: Session }) {
   }
 
   return (
-    <AdminShell session={session}>
-      <main className="px-5 py-10 text-ink sm:py-14">
+    <main className="px-5 py-10 text-ink sm:py-14">
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
@@ -184,8 +183,7 @@ function CampaignBuilder({ session }: { session: Session }) {
         </aside>
           </div>
         </div>
-      </main>
-    </AdminShell>
+    </main>
   );
 }
 

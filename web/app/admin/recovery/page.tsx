@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AdminShell } from "../../../components/admin-shell";
-import { AuthGate } from "../../../components/auth-gate";
+import { useAdminSession } from "../../../components/admin-session";
 import { apiFetch, FeedbackResponse, RecoveryCase, Session, formatRelativeDate } from "../../../lib/api";
 
 const STATUS_OPTIONS = ["new", "open", "assigned", "waiting_on_guest", "resolved", "closed"] as const;
 
 export default function RecoveryPage() {
-  return <AuthGate>{(session) => <RecoveryInbox session={session} />}</AuthGate>;
+  const session = useAdminSession();
+  return <RecoveryInbox session={session} />;
 }
 
 function RecoveryInbox({ session }: { session: Session }) {
@@ -72,8 +72,7 @@ function RecoveryInbox({ session }: { session: Session }) {
   }
 
   return (
-    <AdminShell session={session}>
-      <main className="px-5 py-10 text-ink sm:py-14">
+    <main className="px-5 py-10 text-ink sm:py-14">
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -169,8 +168,7 @@ function RecoveryInbox({ session }: { session: Session }) {
           </section>
         </div>
         </div>
-      </main>
-    </AdminShell>
+    </main>
   );
 }
 

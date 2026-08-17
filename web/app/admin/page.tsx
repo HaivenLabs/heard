@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AdminShell } from "../../components/admin-shell";
-import { AuthGate } from "../../components/auth-gate";
+import { useAdminSession } from "../../components/admin-session";
 import { apiFetch, Location, RecoveryCase, Session, SurveyCampaign } from "../../lib/api";
 
 type ConsoleData = {
@@ -13,7 +12,8 @@ type ConsoleData = {
 };
 
 export default function ConsolePage() {
-  return <AuthGate>{(session) => <Console session={session} />}</AuthGate>;
+  const session = useAdminSession();
+  return <Console session={session} />;
 }
 
 function Console({ session }: { session: Session }) {
@@ -33,8 +33,7 @@ function Console({ session }: { session: Session }) {
   const openCases = data?.cases.filter((item) => !["resolved", "closed", "archived"].includes(item.status)).length ?? 0;
 
   return (
-    <AdminShell session={session}>
-      <main className="mx-auto max-w-7xl px-5 py-10 sm:py-14">
+    <main className="mx-auto max-w-7xl px-5 py-10 sm:py-14">
         <div className="grid items-end gap-8 lg:grid-cols-[1fr_auto]">
           <div>
             <p className="font-body text-xs uppercase tracking-[0.28em] text-clay">North Star Noodles · Free</p>
@@ -98,8 +97,7 @@ function Console({ session }: { session: Session }) {
             <Link className="mt-8 inline-flex rounded-full border border-parchment/20 px-5 py-3 font-body text-sm font-semibold transition hover:bg-parchment/10" href="/admin/recovery">Open recovery inbox</Link>
           </aside>
         </section>
-      </main>
-    </AdminShell>
+    </main>
   );
 }
 
