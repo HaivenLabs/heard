@@ -2,7 +2,7 @@
 
 ## Goal
 
-Give an existing restaurant customer a credible path into a protected management console and then into the first campaign workflow, without creating a permanent Heard-owned authentication stack. Public prospect conversion is defined separately in Slice 5 and routes through `/contact`, not `/login`.
+Give an existing restaurant customer a credible path into a protected management console and then into the first campaign workflow, without creating a permanent Heard-owned authentication stack. This slice proves returning-customer access; first-time self-service registration and workspace activation are defined in Slice 6.
 
 ## User story
 
@@ -27,6 +27,7 @@ As an existing restaurant customer, I can sign in, see my workspace, and start b
 - Heard-owned tenant membership or role administration.
 - Billing and subscription enforcement.
 - A production Passage token verifier before Passage publishes that contract.
+- First-time restaurant registration and workspace provisioning, which are delivered as a complete self-service journey in Slice 6.
 
 ## API contract
 

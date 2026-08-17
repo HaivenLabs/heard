@@ -17,6 +17,8 @@ assert.match(home, /<h1[^>]*>The guest experience, in your hands<\/h1>/);
 assert.match(contact, /<h1[^>]*>Built for restaurant operators, by restaurant operators\.<\/h1>/);
 assert.doesNotMatch(contact, /bg-\[#17251d\]/);
 assert.doesNotMatch(contact, /function Outcome/);
+assert.doesNotMatch(contact, /guest demo again/i);
+assert.match(contact, />Try guest experience<\/Link>/);
 
 assert.match(adminShell, /brand-backdrop/);
 assert.match(publicHeader, />Try guest experience<\/Link>/);

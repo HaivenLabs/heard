@@ -1,5 +1,13 @@
 # Open Restaurant Guest Experience Platform
 
+## Product adoption strategy
+
+Heard is self-service first. A restaurant operator should be able to register through Passage, create the first restaurant workspace and location, and reach a usable campaign without requesting a demo, booking a call, or waiting for approval.
+
+The public walkthrough request is an optional assistance path for operators who are unsure or want help. It must not be the primary call to action or a prerequisite for activation. Onboarding should collect only the minimum product data needed for the next step, use sensible defaults, preserve progress across failures, and lead directly to the first complete value loop.
+
+Hosted plan enforcement and billing must use a shared Haiven billing contract when introduced. Lack of a billing integration must not be replaced with an ad hoc heard-owned subscription system or used to block early self-service product validation.
+
 ## Heard Engineering Constitution
 
 This section defines the non-negotiable engineering, architecture, quality, scalability, maintainability, and contributor principles for Heard.

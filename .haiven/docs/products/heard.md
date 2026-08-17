@@ -6,6 +6,12 @@ Heard is the open restaurant guest experience platform.
 
 A restaurant guest experience platform that helps restaurants collect private feedback, recover unhappy guests, route happy guests to public reviews, and understand what is happening across locations.
 
+## Adoption model
+
+Heard should let a restaurant operator begin using the product without a mandatory sales conversation. The primary public journey is self-service activation: Passage-owned account registration, creation of the first restaurant workspace and location, and direct entry into the first campaign workflow.
+
+An optional walkthrough remains available for operators who are unsure or want implementation help, but it must not gate registration, workspace activation, or initial product value. Onboarding should request only the information required for the next product step and defer sales qualification, advanced configuration, integrations, and commercial-plan decisions until they are relevant.
+
 ## Responsibilities
 
 Heard owns:

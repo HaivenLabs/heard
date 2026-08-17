@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { RatingFace, RatingValue } from "../../../components/rating-face";
 import { apiFetch, FeedbackResponse, FeedbackSession, PublicSurvey } from "../../../lib/api";
+import { isValidEmail, isValidPhone } from "../../../lib/contact-validation";
 
 const ratings: Array<{ value: RatingValue; label: string; prompt: string }> = [
   { value: 1, label: "Not good", prompt: "We are sorry this missed the mark." },
@@ -96,15 +97,11 @@ export default function FlyerSurveyPage({ params }: { params: Promise<{ token: s
     if (!email && !phone) {
       return "Add a phone number or email so we know how to reach you.";
     }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email && !isValidEmail(email)) {
       return "Enter a complete email address, like you@example.com.";
     }
-    if (phone) {
-      const allowedCharacters = /^[+()\d\s.-]+$/;
-      const digitCount = phone.replace(/\D/g, "").length;
-      if (!allowedCharacters.test(phone) || digitCount < 10 || digitCount > 15 || (phone.includes("+") && !phone.startsWith("+"))) {
-        return "Enter a complete phone number, including area code.";
-      }
+    if (phone && !isValidPhone(phone)) {
+      return "Enter a valid phone number with area code, or start international numbers with +.";
     }
     return "";
   }

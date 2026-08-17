@@ -5,6 +5,7 @@ import { FormEvent, useState } from "react";
 import { BrandBackdrop } from "../../components/brand-backdrop";
 import { PublicHeader } from "../../components/public-header";
 import { apiFetch, MarketingLead } from "../../lib/api";
+import { isValidEmail, isValidPhone } from "../../lib/contact-validation";
 
 type LeadSource = "marketing_site" | "guest_demo";
 
@@ -76,7 +77,7 @@ export default function ContactForm({ source }: { source: LeadSource }) {
               <p className="mx-auto mt-4 max-w-md font-body text-base leading-7 text-ink/60">The heard team has your request for {lead.restaurant_name}. We&apos;ll reach out using the contact details you provided.</p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
                 <Link className="rounded-full bg-ink px-6 py-3 font-body text-sm font-semibold text-parchment" href="/">Back to heard</Link>
-                <Link className="rounded-full border border-ink/15 px-6 py-3 font-body text-sm font-semibold" href="/f/demo-heard">Try the guest demo again</Link>
+                <Link className="rounded-full border border-ink/15 px-6 py-3 font-body text-sm font-semibold" href="/f/demo-heard">Try guest experience</Link>
               </div>
             </div>
           ) : (
@@ -125,12 +126,11 @@ export default function ContactForm({ source }: { source: LeadSource }) {
 
 function validateLead({ name, workEmail, phone, restaurantName, locationCount }: { name: string; workEmail: string; phone: string; restaurantName: string; locationCount: string }) {
   if (name.length < 2) return "Enter your name.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmail)) return "Enter a complete work email address.";
+  if (!isValidEmail(workEmail)) return "Enter a valid work email, like name@restaurant.com.";
   if (restaurantName.length < 2) return "Enter your restaurant or brand name.";
   if (!locationCount) return "Choose the number of restaurant locations.";
   if (phone) {
-    const digits = phone.replace(/\D/g, "").length;
-    if (!/^\+?[()\d\s.-]+$/.test(phone) || digits < 10 || digits > 15) return "Enter a complete phone number, including area code.";
+    if (!isValidPhone(phone)) return "Enter a valid phone number with area code, or start international numbers with +.";
   }
   return "";
 }

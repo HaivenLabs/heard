@@ -5,12 +5,17 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/mail"
+	"regexp"
 	"strings"
-	"unicode"
 )
 
 var errValidation = errors.New("validation failed")
+
+var (
+	emailLocalPattern     = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+/=?^_{|}~.-]+$")
+	domainLabelPattern    = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+	topLevelDomainPattern = regexp.MustCompile(`^[A-Za-z]{2,63}$`)
+)
 
 func validationError(message string) error {
 	return fmt.Errorf("%w: %s", errValidation, message)
@@ -22,11 +27,8 @@ func validateContactDetails(email, phone string, required bool) error {
 	if required && email == "" && phone == "" {
 		return validationError("a phone number or email is required")
 	}
-	if email != "" {
-		parsed, err := mail.ParseAddress(email)
-		if err != nil || !strings.EqualFold(parsed.Address, email) || len(email) > 254 {
-			return validationError("enter a valid email address")
-		}
+	if email != "" && !isValidEmailFormat(email) {
+		return validationError("enter a valid email address")
 	}
 	if phone != "" && !isValidPhoneFormat(phone) {
 		return validationError("enter a valid phone number")
@@ -34,19 +36,79 @@ func validateContactDetails(email, phone string, required bool) error {
 	return nil
 }
 
+func isValidEmailFormat(email string) bool {
+	if len(email) > 254 || strings.Count(email, "@") != 1 {
+		return false
+	}
+	local, domain, found := strings.Cut(email, "@")
+	if !found || local == "" || len(local) > 64 || strings.HasPrefix(local, ".") || strings.HasSuffix(local, ".") || strings.Contains(local, "..") {
+		return false
+	}
+	if !emailLocalPattern.MatchString(local) || domain == "" || len(domain) > 253 || strings.Contains(domain, "..") {
+		return false
+	}
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 || !topLevelDomainPattern.MatchString(labels[len(labels)-1]) {
+		return false
+	}
+	for _, label := range labels {
+		if !domainLabelPattern.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
+
 func isValidPhoneFormat(phone string) bool {
-	digits := 0
+	if phone == "" || len(phone) > 32 {
+		return false
+	}
+	body := strings.TrimPrefix(phone, "+")
+	if body == "" || (body[0] != '(' && (body[0] < '0' || body[0] > '9')) || body[len(body)-1] < '0' || body[len(body)-1] > '9' {
+		return false
+	}
+	digits := strings.Builder{}
+	parenthesisDepth := 0
 	for index, character := range phone {
 		switch {
-		case unicode.IsDigit(character):
-			digits++
+		case character >= '0' && character <= '9':
+			digits.WriteRune(character)
 		case strings.ContainsRune(" ()-.", character):
+			if character == '(' {
+				parenthesisDepth++
+			}
+			if character == ')' {
+				parenthesisDepth--
+			}
+			if parenthesisDepth < 0 || parenthesisDepth > 1 {
+				return false
+			}
 		case character == '+' && index == 0:
 		default:
 			return false
 		}
 	}
-	return digits >= 10 && digits <= 15 && len(phone) <= 32
+	if parenthesisDepth != 0 {
+		return false
+	}
+	number := digits.String()
+	if strings.HasPrefix(phone, "+") {
+		if len(number) < 8 || len(number) > 15 || number[0] == '0' {
+			return false
+		}
+		if strings.HasPrefix(number, "1") {
+			return len(number) == 11 && isValidNANP(number[1:])
+		}
+		return true
+	}
+	if len(number) == 11 && strings.HasPrefix(number, "1") {
+		number = number[1:]
+	}
+	return isValidNANP(number)
+}
+
+func isValidNANP(number string) bool {
+	return len(number) == 10 && number[0] >= '2' && number[0] <= '9' && number[3] >= '2' && number[3] <= '9'
 }
 
 func validateMarketingLeadRequest(req createMarketingLeadRequest) error {

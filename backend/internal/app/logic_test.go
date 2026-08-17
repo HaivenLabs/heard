@@ -21,11 +21,21 @@ func TestNullableUUID(t *testing.T) {
 }
 
 func TestValidateContactDetailsAcceptsFormattedEmailOrPhone(t *testing.T) {
-	if err := validateContactDetails("guest@example.com", "", true); err != nil {
-		t.Fatalf("valid email rejected: %v", err)
+	valid := []struct {
+		email string
+		phone string
+	}{
+		{email: "guest@example.com"},
+		{email: "first.last+takeout@restaurant.co.uk"},
+		{phone: "(206) 555-0142"},
+		{phone: "1-206-555-0142"},
+		{phone: "+1 (206) 555-0142"},
+		{phone: "+44 20 7946 0958"},
 	}
-	if err := validateContactDetails("", "+1 (206) 555-0142", true); err != nil {
-		t.Fatalf("valid phone rejected: %v", err)
+	for _, item := range valid {
+		if err := validateContactDetails(item.email, item.phone, true); err != nil {
+			t.Fatalf("valid contact rejected (%q, %q): %v", item.email, item.phone, err)
+		}
 	}
 }
 
@@ -36,14 +46,33 @@ func TestValidateContactDetailsRejectsMissingGiveawayContact(t *testing.T) {
 }
 
 func TestValidateContactDetailsRejectsInvalidFormats(t *testing.T) {
-	if err := validateContactDetails("not-an-email", "", false); err == nil {
-		t.Fatal("expected invalid email to be rejected")
+	invalid := []struct {
+		email string
+		phone string
+	}{
+		{email: "not-an-email"},
+		{email: "guest@example.c"},
+		{email: ".guest@example.com"},
+		{email: "guest..name@example.com"},
+		{email: "guest@example..com"},
+		{email: "guest@-example.com"},
+		{email: "guest@example_.com"},
+		{phone: "call-me-maybe"},
+		{phone: "555-12"},
+		{phone: "000-000-0000"},
+		{phone: "123-456-7890"},
+		{phone: "206-155-0142"},
+		{phone: "+01234567890"},
+		{phone: "+1 206 555 014"},
+		{phone: "206+555+0142"},
+		{phone: "(206 555-0142"},
+		{phone: "-206-555-0142"},
+		{phone: "206-555-0142-"},
 	}
-	if err := validateContactDetails("", "call-me-maybe", false); err == nil {
-		t.Fatal("expected invalid phone to be rejected")
-	}
-	if err := validateContactDetails("", "555-12", false); err == nil {
-		t.Fatal("expected short phone to be rejected")
+	for _, item := range invalid {
+		if err := validateContactDetails(item.email, item.phone, false); err == nil {
+			t.Fatalf("expected invalid contact to be rejected (%q, %q)", item.email, item.phone)
+		}
 	}
 }
 
