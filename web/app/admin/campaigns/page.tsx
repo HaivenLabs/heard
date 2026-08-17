@@ -13,8 +13,8 @@ const defaultCampaign = {
   incentive: "Complete this survey for a chance to win a $100 nom gift card.",
   smsKeyword: "WIN",
   smsPhone: "(877) 426-0492",
-  googleReviewURL: "https://www.google.com/maps/search/?api=1&query=Nom+restaurant",
-  yelpReviewURL: "https://www.yelp.com/search?find_desc=Nom"
+  googleReviewURL: "https://maps.app.goo.gl/D3cEeXBEtGaKF2Lz8",
+  yelpReviewURL: "https://www.yelp.com/biz/nom-san-juan-capistrano"
 };
 
 export default function CampaignBuilderPage() {

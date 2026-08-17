@@ -20,6 +20,7 @@ As a Heard prospect using the seeded demo, the information I enter is persisted 
 - Completion language based on the visible selected feeling rather than an unseen number.
 - Client and server email/phone format validation.
 - Shared format rules accept practical tagged email addresses, formatted US/Canada numbers, and `+`-prefixed international numbers while rejecting malformed domains, impossible NANP prefixes, misplaced country prefixes, letters, and unbalanced punctuation.
+- The seeded nom demo routes optional public-review actions to nom San Juan Capistrano's direct Google Maps and Yelp destinations rather than generic search pages.
 - Demo response metadata for lead source and requested Heard sales follow-up.
 
 ## Non-goals

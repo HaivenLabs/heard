@@ -20,10 +20,12 @@ type Store struct {
 }
 
 const (
-	demoTenantID       = "11111111-1111-1111-1111-111111111111"
-	demoLocationID     = "22222222-2222-2222-2222-222222222222"
-	demoFeedbackLinkID = "33333333-3333-3333-3333-333333333333"
-	demoCampaignID     = "44444444-4444-4444-4444-444444444444"
+	demoTenantID        = "11111111-1111-1111-1111-111111111111"
+	demoLocationID      = "22222222-2222-2222-2222-222222222222"
+	demoFeedbackLinkID  = "33333333-3333-3333-3333-333333333333"
+	demoCampaignID      = "44444444-4444-4444-4444-444444444444"
+	demoGoogleReviewURL = "https://maps.app.goo.gl/D3cEeXBEtGaKF2Lz8"
+	demoYelpReviewURL   = "https://www.yelp.com/biz/nom-san-juan-capistrano"
 )
 
 func NewStore(ctx context.Context, cfg Config) (*Store, error) {
@@ -69,15 +71,16 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 		values (
 			$1, $2, $3, 'Takeout bag gift card survey', 'nom', 'How did we do?',
 			'Tap the face that matches your visit.', 'Complete this survey for a chance to win a $100 nom gift card.',
-			'WIN', '(877) 426-0492', 'https://www.google.com/maps/search/?api=1&query=Nom+restaurant',
-			'https://www.yelp.com/search?find_desc=Nom', 'active'
+			'WIN', '(877) 426-0492', $4, $5, 'active'
 		)
 		on conflict (id) do update set
 			restaurant_name = excluded.restaurant_name,
 			headline = excluded.headline,
 			prompt = excluded.prompt,
-			incentive_text = excluded.incentive_text
-	`, demoCampaignID, demoTenantID, demoLocationID); err != nil {
+			incentive_text = excluded.incentive_text,
+			google_review_url = excluded.google_review_url,
+			yelp_review_url = excluded.yelp_review_url
+	`, demoCampaignID, demoTenantID, demoLocationID, demoGoogleReviewURL, demoYelpReviewURL); err != nil {
 		return err
 	}
 	_, err := s.pool.Exec(ctx, `
