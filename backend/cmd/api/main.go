@@ -14,6 +14,9 @@ import (
 
 func main() {
 	cfg := app.LoadConfig()
+	if err := cfg.ValidateAPI(); err != nil {
+		log.Fatalf("invalid runtime configuration: %v", err)
+	}
 	ctx := context.Background()
 
 	store, err := app.NewStore(ctx, cfg)
@@ -30,11 +33,20 @@ func main() {
 		log.Fatalf("seed demo data: %v", err)
 	}
 
-	server := app.NewServer(cfg, store)
+	identity, err := app.NewIdentityProvider(cfg)
+	if err != nil {
+		log.Fatalf("configure Passage identity provider: %v", err)
+	}
+
+	server := app.NewServer(cfg, store, identity)
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.AppPort,
 		Handler:           server.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 * 1024,
 	}
 
 	go func() {

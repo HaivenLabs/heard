@@ -15,8 +15,8 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 5. Guest taps one of five faces to rate the experience from 1 to 5.
 6. Ratings 1 through 4 collect feedback and contact information before completion.
 7. Ratings 1 through 4 create a recovery case.
-8. Rating 5 prompts Google and Yelp review links first.
-9. Rating 5 then collects contact information for the giveaway entry.
+8. Rating 5 shows a thank-you using the selected face and offers optional Google and Yelp review links.
+9. Review links and contact information appear on the same final step before one submission.
 
 ## Rules
 
@@ -26,8 +26,13 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 - Campaign is the attribution context.
 - Phone or email is required for giveaway entry.
 - Marketing consent is separate from transactional follow-up.
+- Giveaway entry requires explicit transactional-contact consent; this consent permits Heard/the restaurant to contact the guest about the submitted experience and entry. Marketing consent remains a separate optional choice.
 - Public review prompting only happens after a 5 rating.
 - Anything below 5 is follow-up required.
+- Guests can change their rating before submission without losing entered details.
+- Guest-facing copy describes the selected feeling and does not expose an internal numeric score.
+- Email and phone formats are validated in both the browser and API.
+- The highest-rating face is a warm, restrained delighted expression with no tongue or heart eyes.
 
 ## Implemented surfaces
 
@@ -41,3 +46,5 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 Heard must not render QR codes itself. It only sends the destination URL to qurl when `QURL_BASE_URL` is configured and stores the asset reference qurl returns.
 
 When qurl is not configured, Heard still creates the campaign and survey link, but QR asset generation is shown as unavailable.
+
+qurl provider SVG is converted to an isolated image data URL before it crosses the Heard API boundary. The admin app renders QR output only through an image element and never inserts provider markup into the DOM. Public cleartext asset URLs are rejected; local loopback assets remain available for offline development.

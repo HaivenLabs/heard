@@ -1,17 +1,61 @@
 package app
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log"
+	"mime"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Server struct {
-	cfg   Config
-	store *Store
+	cfg           Config
+	store         *Store
+	identity      IdentityProvider
+	passageHTTP   *http.Client
+	limiter       publicWriteLimiter
+	clientAddress clientAddressResolver
+}
+
+const (
+	publicRequestBodyLimit  int64 = 32 * 1024
+	defaultRequestBodyLimit int64 = 64 * 1024
+)
+
+type createLocalSessionRequest struct {
+	Email string `json:"email"`
+}
+
+type createOnboardingActivationRequest struct {
+	RestaurantName string `json:"restaurant_name"`
+	LocationName   string `json:"location_name"`
+	Timezone       string `json:"timezone"`
+	Source         string `json:"source"`
+}
+
+type createMarketingLeadRequest struct {
+	Name           string `json:"name"`
+	WorkEmail      string `json:"work_email"`
+	Phone          string `json:"phone"`
+	RestaurantName string `json:"restaurant_name"`
+	LocationCount  string `json:"location_count"`
+	Challenge      string `json:"challenge"`
+	Source         string `json:"source"`
+	ContactConsent bool   `json:"contact_consent"`
 }
 
 type createTenantRequest struct {
@@ -38,6 +82,8 @@ type createSurveyCampaignRequest struct {
 	SMSPhone        string `json:"sms_phone"`
 	GoogleReviewURL string `json:"google_review_url"`
 	YelpReviewURL   string `json:"yelp_review_url"`
+	LogoURL         string `json:"logo_url"`
+	Theme           string `json:"theme"`
 }
 
 type createFeedbackLinkRequest struct {
@@ -47,6 +93,12 @@ type createFeedbackLinkRequest struct {
 	Name       string `json:"name"`
 	Channel    string `json:"channel"`
 	Token      string `json:"token,omitempty"`
+	Slug       string `json:"slug,omitempty"`
+}
+
+type updateFeedbackLinkRequest struct {
+	Slug       string `json:"slug"`
+	CampaignID string `json:"campaign_id,omitempty"`
 }
 
 type createFeedbackSessionRequest struct {
@@ -83,35 +135,88 @@ type actorContext struct {
 	TenantID  string
 	ActorID   string
 	ActorRole string
+	Identity  Identity
 }
 
-func NewServer(cfg Config, store *Store) *Server {
-	return &Server{cfg: cfg, store: store}
+func NewServer(cfg Config, store *Store, identity IdentityProvider) *Server {
+	var limiter publicWriteLimiter = newPublicRateLimiter(cfg.PublicWriteRateLimit, time.Duration(cfg.PublicWriteRateWindowSeconds)*time.Second, time.Now)
+	if cfg.IsProductionLike() {
+		limiter = unavailablePublicWriteLimiter{}
+		if store != nil {
+			limiter = newPostgresPublicRateLimiter(store.pool, cfg.PublicWriteRateLimit, cfg.PublicWriteRateWindowSeconds)
+		}
+	}
+	return &Server{
+		cfg: cfg, store: store, identity: identity,
+		passageHTTP:   &http.Client{Timeout: 5 * time.Second},
+		limiter:       limiter,
+		clientAddress: newClientAddressResolver(cfg.TrustedProxyCIDRs),
+	}
 }
 
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/healthz", s.handleHealth)
-	mux.HandleFunc("POST /api/v1/tenants", s.handleCreateTenant)
-	mux.HandleFunc("GET /api/v1/tenants/{id}", s.withAdminContext(s.handleGetTenant))
-	mux.HandleFunc("GET /api/v1/locations", s.withAdminContext(s.handleListLocations))
-	mux.HandleFunc("POST /api/v1/locations", s.withAdminContext(s.handleCreateLocation))
-	mux.HandleFunc("GET /api/v1/locations/{id}", s.withAdminContext(s.handleGetLocation))
-	mux.HandleFunc("GET /api/v1/survey-campaigns", s.withAdminContext(s.handleListSurveyCampaigns))
-	mux.HandleFunc("POST /api/v1/survey-campaigns", s.withAdminContext(s.handleCreateSurveyCampaign))
-	mux.HandleFunc("GET /api/v1/survey-campaigns/{id}", s.withAdminContext(s.handleGetSurveyCampaign))
+	mux.HandleFunc("POST /api/v1/marketing-leads", s.withPublicWriteControls("marketing-lead", s.handleCreateMarketingLead))
+	if _, ok := s.identity.(localSessionIssuer); ok && s.cfg.IsLocalRuntime() {
+		mux.HandleFunc("POST /api/v1/auth/local/session", s.handleCreateLocalSession)
+	}
+	if _, ok := s.identity.(localRegistrationIssuer); ok && s.cfg.IsLocalRuntime() {
+		mux.HandleFunc("POST /api/v1/auth/local/registration", s.handleCreateLocalRegistration)
+	}
+	mux.HandleFunc("GET /api/v1/auth/start", s.handlePassageStart)
+	mux.HandleFunc("GET /api/v1/auth/callback", s.handlePassageCallback)
+	mux.HandleFunc("GET /api/v1/session", s.withIdentity("", s.handleGetSession))
+	mux.HandleFunc("GET /api/v1/onboarding", s.withIdentity("", s.handleGetOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/activations", s.withIdentity("tenant:create", s.handleActivateRestaurantWorkspace))
+	mux.HandleFunc("POST /api/v1/tenants", s.withIdentity("tenant:create", s.handleCreateTenant))
+	mux.HandleFunc("GET /api/v1/tenants/{id}", s.withAdminContext("tenant:read", s.handleGetTenant))
+	mux.HandleFunc("GET /api/v1/locations", s.withAdminContext("location:read", s.handleListLocations))
+	mux.HandleFunc("POST /api/v1/locations", s.withAdminContext("location:write", s.handleCreateLocation))
+	mux.HandleFunc("GET /api/v1/locations/{id}", s.withAdminContext("location:read", s.handleGetLocation))
+	mux.HandleFunc("GET /api/v1/survey-campaigns", s.withAdminContext("campaign:read", s.handleListSurveyCampaigns))
+	mux.HandleFunc("POST /api/v1/survey-campaigns", s.withAdminContext("campaign:write", s.handleCreateSurveyCampaign))
+	mux.HandleFunc("GET /api/v1/survey-campaigns/{id}", s.withAdminContext("campaign:read", s.handleGetSurveyCampaign))
 	mux.HandleFunc("GET /api/v1/public/surveys/{token}", s.handlePublicSurvey)
-	mux.HandleFunc("POST /api/v1/feedback-links", s.withAdminContext(s.handleCreateFeedbackLink))
-	mux.HandleFunc("POST /api/v1/feedback-links/{id}/qr", s.withAdminContext(s.handleGenerateQR))
+	mux.HandleFunc("GET /api/v1/public/surveys/by-path/{handle}/{slug...}", s.handlePublicSurveyByPath)
+	mux.HandleFunc("POST /api/v1/feedback-links", s.withAdminContext("campaign:write", s.handleCreateFeedbackLink))
+	mux.HandleFunc("PATCH /api/v1/feedback-links/{id}", s.withAdminContext("campaign:write", s.handleUpdateFeedbackLink))
+	mux.HandleFunc("POST /api/v1/feedback-links/{id}/qr", s.withAdminContext("campaign:write", s.handleGenerateQR))
 	mux.HandleFunc("GET /api/v1/feedback-links/resolve/{token}", s.handleResolveFeedbackLink)
-	mux.HandleFunc("POST /api/v1/feedback-sessions", s.handleCreateFeedbackSession)
-	mux.HandleFunc("POST /api/v1/feedback-responses", s.handleSubmitFeedback)
-	mux.HandleFunc("GET /api/v1/feedback-responses", s.withAdminContext(s.handleListFeedbackResponses))
-	mux.HandleFunc("GET /api/v1/feedback-responses/{id}", s.withAdminContext(s.handleGetFeedbackResponse))
-	mux.HandleFunc("GET /api/v1/recovery-cases", s.withAdminContext(s.handleListRecoveryCases))
-	mux.HandleFunc("GET /api/v1/recovery-cases/{id}", s.withAdminContext(s.handleGetRecoveryCase))
-	mux.HandleFunc("PATCH /api/v1/recovery-cases/{id}", s.withAdminContext(s.handleUpdateRecoveryCase))
+	mux.HandleFunc("POST /api/v1/feedback-sessions", s.withPublicWriteControls("feedback-session", s.handleCreateFeedbackSession))
+	mux.HandleFunc("POST /api/v1/feedback-responses", s.withPublicWriteControls("feedback-response", s.handleSubmitFeedback))
+	mux.HandleFunc("GET /api/v1/feedback-responses", s.withAdminContext("recovery:read", s.handleListFeedbackResponses))
+	mux.HandleFunc("GET /api/v1/feedback-responses/{id}", s.withAdminContext("recovery:read", s.handleGetFeedbackResponse))
+	mux.HandleFunc("GET /api/v1/recovery-cases", s.withAdminContext("recovery:read", s.handleListRecoveryCases))
+	mux.HandleFunc("GET /api/v1/recovery-cases/{id}", s.withAdminContext("recovery:read", s.handleGetRecoveryCase))
+	mux.HandleFunc("PATCH /api/v1/recovery-cases/{id}", s.withAdminContext("recovery:write", s.handleUpdateRecoveryCase))
+	mux.HandleFunc("POST /api/v1/outbox-events/{id}/requeue", s.withOwnerContext("outbox:replay", s.handleRequeueOutboxEvent))
 	return s.withCORS(mux)
+}
+
+func (s *Server) withPublicWriteControls(route string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.limiter != nil {
+			client := s.clientAddress.Resolve(r)
+			allowed, retryAfter, err := s.limiter.Allow(r.Context(), route+":"+client)
+			if err != nil {
+				log.Printf(`{"event":"public_write.rate_limit_unavailable","route":%q,"error_type":%q}`, route, fmt.Sprintf("%T", err))
+				writeError(w, http.StatusServiceUnavailable, "request protection is temporarily unavailable")
+				return
+			}
+			if !allowed {
+				seconds := int(retryAfter.Round(time.Second) / time.Second)
+				if seconds < 1 {
+					seconds = 1
+				}
+				w.Header().Set("Retry-After", strconv.Itoa(seconds))
+				log.Printf(`{"event":"public_write.rate_limited","route":%q}`, route)
+				writeError(w, http.StatusTooManyRequests, "too many requests; retry later")
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) withCORS(next http.Handler) http.Handler {
@@ -121,43 +226,295 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			origin = "*"
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Heard-Tenant-ID, X-Heard-Actor-ID, X-Heard-Actor-Role")
+		if origin != "*" {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Heard-Tenant-ID")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		log.Printf(`{"event":"http.request","request_id":%q,"method":%q,"path":%q}`, requestID, r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) withAdminContext(next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
+func (s *Server) withIdentity(permission string, next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := actorContext{
-			TenantID:  strings.TrimSpace(r.Header.Get("X-Heard-Tenant-ID")),
-			ActorID:   defaultString(strings.TrimSpace(r.Header.Get("X-Heard-Actor-ID")), "local-admin"),
-			ActorRole: defaultString(strings.TrimSpace(r.Header.Get("X-Heard-Actor-Role")), "admin"),
+		token, ok := bearerToken(r.Header.Get("Authorization"))
+		if !ok {
+			if cookie, err := r.Cookie("heard_session"); err == nil && cookie.Value != "" {
+				token, ok = cookie.Value, true
+			}
 		}
+		if !ok || s.identity == nil {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		identity, err := s.identity.VerifyToken(r.Context(), token)
+		if err != nil {
+			if errors.Is(err, errIdentityUnavailable) {
+				log.Printf("identity provider unavailable path=%s", r.URL.Path)
+				writeError(w, http.StatusServiceUnavailable, "identity service unavailable")
+				return
+			}
+			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		if permission != "" && !identity.HasPermission(permission) {
+			log.Printf("authorization denied actor_id=%s permission=%s path=%s", identity.UserID, permission, r.URL.Path)
+			writeError(w, http.StatusForbidden, "permission denied")
+			return
+		}
+		next(w, r, actorContext{ActorID: identity.UserID, ActorRole: identity.Role, Identity: identity})
+	}
+}
 
-		if ctx.TenantID == "" && r.Pattern != "GET /api/v1/tenants/{id}" {
+func (s *Server) withAdminContext(permission string, next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
+	return s.withIdentity(permission, func(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+		ctx.TenantID = strings.TrimSpace(r.Header.Get("X-Heard-Tenant-ID"))
+		if ctx.TenantID == "" {
 			writeError(w, http.StatusUnauthorized, "tenant context is required")
 			return
 		}
+		if !ctx.Identity.HasTenant(ctx.TenantID) {
+			log.Printf("tenant access denied actor_id=%s tenant_id=%s path=%s", ctx.ActorID, ctx.TenantID, r.URL.Path)
+			writeError(w, http.StatusForbidden, "tenant access denied")
+			return
+		}
 		next(w, r, ctx)
-	}
+	})
+}
+
+func (s *Server) withOwnerContext(permission string, next func(http.ResponseWriter, *http.Request, actorContext)) http.HandlerFunc {
+	return s.withAdminContext(permission, func(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+		if ctx.ActorRole != "owner" {
+			log.Printf("owner access denied actor_id=%s tenant_id=%s path=%s", ctx.ActorID, ctx.TenantID, r.URL.Path)
+			writeError(w, http.StatusForbidden, "owner access required")
+			return
+		}
+		next(w, r, ctx)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
-	var req createTenantRequest
-	if err := decodeJSON(r, &req); err != nil {
+func (s *Server) handleCreateMarketingLead(w http.ResponseWriter, r *http.Request) {
+	var req createMarketingLeadRequest
+	if err := decodeJSONRequest(w, r, &req, publicRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	lead, err := s.store.CreateMarketingLead(r.Context(), req)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	log.Printf("marketing lead created lead_id=%s source=%s location_count=%s", lead.ID, lead.Source, lead.LocationCount)
+	writeJSON(w, http.StatusCreated, lead)
+}
+
+func (s *Server) handleCreateLocalSession(w http.ResponseWriter, r *http.Request) {
+	issuer, ok := s.identity.(localSessionIssuer)
+	if !ok {
+		writeError(w, http.StatusNotFound, "local identity adapter is disabled")
+		return
+	}
+	var req createLocalSessionRequest
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	session, err := issuer.IssueSession(req.Email)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	tenant, err := s.store.CreateTenant(r.Context(), "local-admin", "admin", req)
+	log.Printf("local Passage session issued actor_id=%s tenant_id=%s", session.Identity.UserID, session.TenantID)
+	writeJSON(w, http.StatusCreated, session)
+}
+
+func (s *Server) handleCreateLocalRegistration(w http.ResponseWriter, r *http.Request) {
+	issuer, ok := s.identity.(localRegistrationIssuer)
+	if !ok {
+		writeError(w, http.StatusNotFound, "local identity adapter is disabled")
+		return
+	}
+	var req createLocalSessionRequest
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	session, err := issuer.IssueRegistration(req.Email)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("onboarding account resolved actor_id=%s provider=%s", session.Identity.UserID, session.Identity.Provider)
+	writeJSON(w, http.StatusCreated, session)
+}
+
+func (s *Server) handlePassageStart(w http.ResponseWriter, r *http.Request) {
+	returnTo := safeReturnPath(r.URL.Query().Get("return_to"))
+	state := handoffRandom(24)
+	verifier := handoffRandom(48)
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	secure := s.cfg.IsProductionLike()
+	for _, cookie := range []*http.Cookie{{Name: "heard_oauth_state", Value: state, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}, {Name: "heard_oauth_verifier", Value: verifier, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}, {Name: "heard_oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte(returnTo)), Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}} {
+		http.SetCookie(w, cookie)
+	}
+	publicURL := s.cfg.PassagePublicURL
+	if publicURL == "" {
+		publicURL = s.cfg.PassageBaseURL
+	}
+	authorize, err := url.Parse(strings.TrimRight(publicURL, "/") + "/api/v1/oauth/authorize")
+	if err != nil {
+		writeError(w, 500, "account service is not configured")
+		return
+	}
+	q := authorize.Query()
+	q.Set("client_id", s.cfg.PassageClientID)
+	q.Set("redirect_uri", s.cfg.PassageCallbackURL)
+	q.Set("state", state)
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+	intent := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("intent")))
+	if intent == "register" || intent == "login" {
+		q.Set("intent", intent)
+	}
+	email := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("email")))
+	if email != "" && isValidEmailFormat(email) {
+		q.Set("login_hint", email)
+	}
+	authorize.RawQuery = q.Encode()
+	http.Redirect(w, r, authorize.String(), http.StatusFound)
+}
+
+func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
+	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
+	stateCookie, stateErr := r.Cookie("heard_oauth_state")
+	verifierCookie, verifierErr := r.Cookie("heard_oauth_verifier")
+	returnCookie, _ := r.Cookie("heard_oauth_return")
+	if code == "" || stateErr != nil || verifierErr != nil || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
+		writeError(w, 400, "account sign-in request is invalid or expired")
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "code": code, "client_id": s.cfg.PassageClientID, "redirect_uri": s.cfg.PassageCallbackURL, "code_verifier": verifierCookie.Value})
+	endpoint := strings.TrimRight(s.cfg.PassageBaseURL, "/") + "/api/v1/oauth/token"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, strings.NewReader(string(payload)))
+	if err != nil {
+		writeError(w, 502, "account service is temporarily unavailable")
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.passageHTTP.Do(req)
+	if err != nil {
+		log.Printf("Passage handoff exchange unavailable: %v", err)
+		writeError(w, 503, "account service is temporarily unavailable")
+		return
+	}
+	defer resp.Body.Close()
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if readErr != nil || resp.StatusCode != 200 {
+		log.Printf("Passage handoff exchange failed status=%d", resp.StatusCode)
+		writeError(w, 401, "account sign-in request is invalid or expired")
+		return
+	}
+	var exchanged struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if json.Unmarshal(raw, &exchanged) != nil || exchanged.AccessToken == "" || exchanged.TokenType != "Bearer" {
+		writeError(w, 502, "account service returned an invalid response")
+		return
+	}
+	if _, err = s.identity.VerifyToken(r.Context(), exchanged.AccessToken); err != nil {
+		log.Printf("Passage handoff token verification failed")
+		writeError(w, 502, "account service returned an invalid response")
+		return
+	}
+	secure := s.cfg.IsProductionLike()
+	maxAge := exchanged.ExpiresIn
+	if maxAge <= 0 || maxAge > 600 {
+		maxAge = 300
+	}
+	http.SetCookie(w, &http.Cookie{Name: "heard_session", Value: exchanged.AccessToken, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
+	for _, name := range []string{"heard_oauth_state", "heard_oauth_verifier", "heard_oauth_return"} {
+		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+	}
+	returnTo := "/onboarding"
+	if returnCookie != nil {
+		if decoded, err := base64.RawURLEncoding.DecodeString(returnCookie.Value); err == nil {
+			returnTo = safeReturnPath(string(decoded))
+		}
+	}
+	destination := strings.TrimRight(s.cfg.WebBaseURL, "/") + returnTo
+	http.Redirect(w, r, destination, http.StatusFound)
+}
+
+func handoffRandom(size int) string {
+	b := make([]byte, size)
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+func safeReturnPath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "/onboarding"
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(value, "//") {
+		return "/onboarding"
+	}
+	return parsed.RequestURI()
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, _ *http.Request, ctx actorContext) {
+	writeJSON(w, http.StatusOK, ctx.Identity)
+}
+
+func (s *Server) handleGetOnboarding(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	state, err := s.store.GetOnboardingState(r.Context(), ctx.Identity)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (s *Server) handleActivateRestaurantWorkspace(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	var req createOnboardingActivationRequest
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	state, err := s.store.ActivateRestaurantWorkspace(r.Context(), ctx.Identity, ctx.ActorRole, r.Header.Get("Idempotency-Key"), req)
+	if err != nil {
+		log.Printf("onboarding activation failed actor_id=%s provider=%s error=%q", ctx.ActorID, ctx.Identity.Provider, err.Error())
+		writeStoreError(w, err)
+		return
+	}
+	log.Printf("onboarding workspace activated actor_id=%s tenant_id=%s activation_id=%s next_step=%s", ctx.ActorID, state.Tenant.ID, state.ActivationID, state.NextStep)
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	var req createTenantRequest
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	tenant, err := s.store.CreateTenant(r.Context(), ctx.ActorID, ctx.ActorRole, req)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -180,8 +537,8 @@ func (s *Server) handleGetTenant(w http.ResponseWriter, r *http.Request, ctx act
 
 func (s *Server) handleCreateLocation(w http.ResponseWriter, r *http.Request, ctx actorContext) {
 	var req createLocationRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	location, err := s.store.CreateLocation(r.Context(), ctx.TenantID, ctx.ActorID, ctx.ActorRole, req)
@@ -198,7 +555,7 @@ func (s *Server) handleListLocations(w http.ResponseWriter, r *http.Request, ctx
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": locations})
+	writeJSON(w, http.StatusOK, paginateCollection(locations, r))
 }
 
 func (s *Server) handleGetLocation(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -212,8 +569,8 @@ func (s *Server) handleGetLocation(w http.ResponseWriter, r *http.Request, ctx a
 
 func (s *Server) handleCreateSurveyCampaign(w http.ResponseWriter, r *http.Request, ctx actorContext) {
 	var req createSurveyCampaignRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	campaign, err := s.store.CreateSurveyCampaign(r.Context(), ctx.TenantID, ctx.ActorID, ctx.ActorRole, req)
@@ -230,7 +587,7 @@ func (s *Server) handleListSurveyCampaigns(w http.ResponseWriter, r *http.Reques
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": campaigns})
+	writeJSON(w, http.StatusOK, paginateCollection(campaigns, r))
 }
 
 func (s *Server) handleGetSurveyCampaign(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -251,10 +608,25 @@ func (s *Server) handlePublicSurvey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, survey)
 }
 
+func (s *Server) handlePublicSurveyByPath(w http.ResponseWriter, r *http.Request) {
+	handle := strings.ToLower(strings.Trim(strings.TrimSpace(r.PathValue("handle")), "/"))
+	slug := strings.ToLower(strings.Trim(strings.TrimSpace(r.PathValue("slug")), "/"))
+	if handle == "" || slug == "" {
+		writeError(w, http.StatusNotFound, "survey not found")
+		return
+	}
+	survey, err := s.store.GetPublicSurveyByPath(r.Context(), handle, slug)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, survey)
+}
+
 func (s *Server) handleCreateFeedbackLink(w http.ResponseWriter, r *http.Request, ctx actorContext) {
 	var req createFeedbackLinkRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	link, err := s.store.CreateFeedbackLink(r.Context(), ctx.TenantID, ctx.ActorID, ctx.ActorRole, req)
@@ -263,6 +635,20 @@ func (s *Server) handleCreateFeedbackLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusCreated, link)
+}
+
+func (s *Server) handleUpdateFeedbackLink(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	var req updateFeedbackLinkRequest
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
+		return
+	}
+	link, err := s.store.UpdateFeedbackLink(r.Context(), ctx.TenantID, ctx.ActorID, ctx.ActorRole, r.PathValue("id"), req)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, link)
 }
 
 func (s *Server) handleGenerateQR(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -285,8 +671,8 @@ func (s *Server) handleResolveFeedbackLink(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleCreateFeedbackSession(w http.ResponseWriter, r *http.Request) {
 	var req createFeedbackSessionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, publicRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	session, err := s.store.CreateFeedbackSession(r.Context(), req)
@@ -299,8 +685,8 @@ func (s *Server) handleCreateFeedbackSession(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleSubmitFeedback(w http.ResponseWriter, r *http.Request) {
 	var req submitFeedbackRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, publicRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	response, err := s.store.SubmitFeedback(r.Context(), req)
@@ -317,7 +703,7 @@ func (s *Server) handleListFeedbackResponses(w http.ResponseWriter, r *http.Requ
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, paginateCollection(items, r))
 }
 
 func (s *Server) handleGetFeedbackResponse(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -335,7 +721,7 @@ func (s *Server) handleListRecoveryCases(w http.ResponseWriter, r *http.Request,
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, paginateCollection(items, r))
 }
 
 func (s *Server) handleGetRecoveryCase(w http.ResponseWriter, r *http.Request, ctx actorContext) {
@@ -349,8 +735,8 @@ func (s *Server) handleGetRecoveryCase(w http.ResponseWriter, r *http.Request, c
 
 func (s *Server) handleUpdateRecoveryCase(w http.ResponseWriter, r *http.Request, ctx actorContext) {
 	var req updateRecoveryCaseRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := decodeJSONRequest(w, r, &req, defaultRequestBodyLimit); err != nil {
+		writeRequestDecodeError(w, err)
 		return
 	}
 	item, err := s.store.UpdateRecoveryCaseStatus(r.Context(), ctx.TenantID, ctx.ActorID, ctx.ActorRole, r.PathValue("id"), req.Status)
@@ -361,22 +747,82 @@ func (s *Server) handleUpdateRecoveryCase(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, item)
 }
 
-func decodeJSON(r *http.Request, out any) error {
+func (s *Server) handleRequeueOutboxEvent(w http.ResponseWriter, r *http.Request, ctx actorContext) {
+	result, err := s.store.RequeueFailedOutboxEvent(r.Context(), ctx.TenantID, r.PathValue("id"), ctx.ActorID, ctx.ActorRole)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	log.Printf(`{"event":"outbox.requeued","event_id":%q,"tenant_id":%q,"actor_id":%q}`, result.EventID, result.TenantID, ctx.ActorID)
+	writeJSON(w, http.StatusOK, result)
+}
+
+type requestDecodeError struct {
+	status  int
+	message string
+	err     error
+}
+
+func (e *requestDecodeError) Error() string { return e.err.Error() }
+
+func decodeJSONRequest(w http.ResponseWriter, r *http.Request, out any, maxBytes int64) error {
 	defer r.Body.Close()
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return &requestDecodeError{status: http.StatusUnsupportedMediaType, message: "Content-Type must be application/json", err: errors.New("unsupported media type")}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(out)
+	if err := decoder.Decode(out); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return &requestDecodeError{status: http.StatusRequestEntityTooLarge, message: fmt.Sprintf("request body exceeds %d KiB", maxBytes/1024), err: err}
+		}
+		return &requestDecodeError{status: http.StatusBadRequest, message: "request body must contain one valid JSON object", err: err}
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return &requestDecodeError{status: http.StatusBadRequest, message: "request body must contain one valid JSON object", err: errors.New("multiple JSON values")}
+	}
+	return nil
+}
+
+func requestErrorStatus(err error) int {
+	var requestErr *requestDecodeError
+	if errors.As(err, &requestErr) {
+		return requestErr.status
+	}
+	return http.StatusBadRequest
+}
+
+func writeRequestDecodeError(w http.ResponseWriter, err error) {
+	var requestErr *requestDecodeError
+	if errors.As(err, &requestErr) {
+		writeError(w, requestErr.status, requestErr.message)
+		return
+	}
+	writeError(w, http.StatusBadRequest, "request body must contain one valid JSON object")
 }
 
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		writeError(w, http.StatusNotFound, "resource not found")
-	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "already"):
+	case errors.Is(err, errValidation):
+		writeError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), errValidation.Error()+": "))
+	case isUniqueViolation(err):
+		writeError(w, http.StatusConflict, "that path is already in use — choose a different one")
+	case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "already"), strings.Contains(err.Error(), "idempotency"):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("store operation failed error_type=%T", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
@@ -392,4 +838,42 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func bearerToken(authorization string) (string, bool) {
+	scheme, token, ok := strings.Cut(strings.TrimSpace(authorization), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(token), true
+}
+
+func collectionPayload[T any](items []T) map[string]any {
+	if items == nil {
+		items = []T{}
+	}
+	return map[string]any{"items": items}
+}
+
+func paginateCollection[T any](items []T, r *http.Request) map[string]any {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return map[string]any{"items": []T{}, "page": page, "page_size": pageSize, "has_more": false}
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return map[string]any{"items": items[start:end], "page": page, "page_size": pageSize, "has_more": end < len(items)}
 }

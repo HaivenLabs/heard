@@ -1,5 +1,7 @@
 # Go
 bin/
+!.haiven/bin/
+!.haiven/bin/haiven.js
 *.test
 *.out
 coverage.out
@@ -9,6 +11,7 @@ node_modules/
 .next/
 dist/
 build/
+*.tsbuildinfo
 
 # Environment
 .env

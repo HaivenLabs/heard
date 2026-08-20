@@ -12,6 +12,9 @@ import (
 
 func main() {
 	cfg := app.LoadConfig()
+	if err := cfg.ValidateRuntime(); err != nil {
+		log.Fatalf("invalid runtime configuration: %v", err)
+	}
 	ctx := context.Background()
 
 	store, err := app.NewStore(ctx, cfg)

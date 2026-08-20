@@ -64,4 +64,7 @@ Deliver a Docker-runnable vertical slice that proves the loop:
 - Duplicate feedback session submission is rejected
 - Invalid recovery status transitions are rejected
 - Worker keeps polling if outbox processing fails
+- Worker drains a bounded batch per poll and reports attempted/succeeded/failed counts
+- Only a verified tenant owner can requeue that tenant's failed outbox event
 - Tenant header mismatches are rejected for admin writes
+- Public writes reject oversized or non-JSON bodies and enforce shared production rate limits

@@ -9,6 +9,20 @@ type Tenant struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type MarketingLead struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	WorkEmail      string    `json:"work_email"`
+	Phone          string    `json:"phone"`
+	RestaurantName string    `json:"restaurant_name"`
+	LocationCount  string    `json:"location_count"`
+	Challenge      string    `json:"challenge"`
+	Source         string    `json:"source"`
+	ContactConsent bool      `json:"contact_consent"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type Location struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenant_id"`
@@ -31,6 +45,8 @@ type SurveyCampaign struct {
 	SMSPhone        string    `json:"sms_phone"`
 	GoogleReviewURL string    `json:"google_review_url"`
 	YelpReviewURL   string    `json:"yelp_review_url"`
+	LogoURL         string    `json:"logo_url"`
+	Theme           string    `json:"theme"`
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -42,10 +58,11 @@ type FeedbackLink struct {
 	CampaignID  string    `json:"campaign_id,omitempty"`
 	Name        string    `json:"name"`
 	Token       string    `json:"token"`
+	Slug        string    `json:"slug,omitempty"`
 	Status      string    `json:"status"`
 	Channel     string    `json:"channel"`
 	QRAssetURL  string    `json:"qr_asset_url"`
-	QRSVG       string    `json:"qr_svg,omitempty"`
+	QRSVG       string    `json:"-"`
 	Destination string    `json:"destination_url"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -53,6 +70,46 @@ type FeedbackLink struct {
 type PublicSurvey struct {
 	Link     FeedbackLink   `json:"link"`
 	Campaign SurveyCampaign `json:"campaign"`
+}
+
+type OnboardingState struct {
+	ActivationID string          `json:"activation_id,omitempty"`
+	Status       string          `json:"status"`
+	NextStep     string          `json:"next_step"`
+	Source       string          `json:"source,omitempty"`
+	Tenant       *Tenant         `json:"tenant,omitempty"`
+	Location     *Location       `json:"location,omitempty"`
+	Campaign     *SurveyCampaign `json:"campaign,omitempty"`
+	FeedbackLink *FeedbackLink   `json:"feedback_link,omitempty"`
+}
+
+func (s *OnboardingState) resolveProgress() {
+	s.Status = "in_progress"
+	s.NextStep = "workspace"
+	if s.ActivationID == "" || s.Tenant == nil || s.Location == nil {
+		s.Status = "not_started"
+		return
+	}
+	s.NextStep = "campaign"
+	if s.Campaign == nil {
+		return
+	}
+	s.NextStep = "feedback_link"
+	if s.FeedbackLink == nil {
+		return
+	}
+	s.Status = "complete"
+	s.NextStep = "complete"
+}
+
+type RestaurantWorkspaceActivatedEvent struct {
+	EventID      string    `json:"event_id"`
+	EventType    string    `json:"event_type"`
+	EventVersion int       `json:"event_version"`
+	TenantID     string    `json:"tenant_id"`
+	LocationID   string    `json:"location_id"`
+	ActivationID string    `json:"activation_id"`
+	OccurredAt   time.Time `json:"occurred_at"`
 }
 
 type FeedbackSession struct {
@@ -127,4 +184,11 @@ type FeedbackSubmittedEvent struct {
 	Sentiment          string    `json:"sentiment"`
 	Rating             int       `json:"rating"`
 	OccurredAt         time.Time `json:"occurred_at"`
+}
+
+type OutboxRequeueResult struct {
+	EventID  string `json:"event_id"`
+	TenantID string `json:"tenant_id"`
+	Status   string `json:"status"`
+	Attempts int    `json:"attempts"`
 }

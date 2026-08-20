@@ -172,9 +172,18 @@ Start it locally:
 docker compose up --build
 ```
 
+Compose binds PostgreSQL, the API, and the web app to `127.0.0.1` by default so development owner-token routes are not exposed to the LAN. An intentional host publish may set `HEARD_BIND_ADDRESS`, but a non-loopback value is accepted only when `PASSAGE_MODE=jwks` and `HEARD_SEED_DEMO=false`; place TLS and a forwarding-header-sanitizing proxy in front of the deployment. Local session and registration routes are registered only when the explicit local Passage adapter is active.
+
 Then open:
 
 - `http://localhost:3010` for the web app
+- `http://localhost:3010/start` to create a local self-service account context
+- `http://localhost:3010/onboarding` to resume restaurant, location, and first-campaign setup
+- `http://localhost:3010/walkthrough` for the optional walkthrough journey
+- `http://localhost:3010/api/v1/healthz` for the same-origin API health endpoint
+- `http://localhost:8082/api/v1/healthz` for direct API development and debugging
+- `http://localhost:3010/login` for existing-customer sign-in
+- `http://localhost:3010/admin` for the authenticated management console
 - `http://localhost:3010/admin/campaigns` to create a printed flyer survey campaign
 - `http://localhost:3010/f/demo-heard` for the seeded flyer survey flow
 - `http://localhost:3010/admin/recovery` for the manager recovery inbox
@@ -185,8 +194,30 @@ Default seeded tenant header:
 11111111-1111-1111-1111-111111111111
 ```
 
+`/start` is the primary local self-service journey. Any valid email resolves a deterministic, dedicated account context through the development-only Passage adapter; onboarding then creates or resumes the restaurant workspace and first location and carries the operator into a ready-to-share first campaign. Retries are idempotent, and a qurl outage does not prevent the feedback link from working. Existing-customer `/login` continues to use the seeded demo tenant.
+
+`/walkthrough` remains an optional request for a tailored walkthrough and never gates product access. `APP_ENV` is required and accepts only `local`, `docker`, `test`, `staging`, or `production`; unknown and misspelled values prevent startup. The local Passage adapter and demo seed are allowed only in the three explicit local runtimes, and local authentication additionally requires loopback public/web/CORS origins. Docker publishes database, API, and web ports on loopback only. Staging and production require Passage JWKS authentication, secure browser cookies, HTTPS Passage endpoints, and `HEARD_SEED_DEMO=false`.
+
+Production browser entry starts at the provider-neutral `GET /api/v1/auth/start`. Heard stores PKCE verifier, state, and a same-site return path in short-lived HttpOnly cookies; Passage returns a single-use authorization code; Heard exchanges it server-side using `PASSAGE_CLIENT_ID` and the exact registered `PASSAGE_CALLBACK_URL`. The product JWT is verified and kept only in the Secure/HttpOnly `heard_session` cookie. It is never placed in a browser URL or local storage. Provider-specific route names are not exposed by the heard consumer contract.
+
+`PASSAGE_PUBLIC_URL` is the browser-visible Passage/hosted-proxy origin used only for the authorize redirect (local combined-stack default `http://localhost:3020`). `PASSAGE_BASE_URL` remains the backend-reachable origin used for token exchange and JWKS. If `PASSAGE_PUBLIC_URL` is unset it falls back to `PASSAGE_BASE_URL` for compatibility. Never configure a Docker-only hostname such as `host.docker.internal` as the public URL because the browser must send Passage's origin-scoped session cookie.
+
+Browser traffic uses the Heard origin at `http://localhost:3010/api/*`. Next.js forwards those requests over the Docker network to the Go API at `api:8080`. The container-only port stays `8080`, while Heard publishes host port `8082` by default for direct API development and debugging; override the host port with `HEARD_API_PORT` when needed.
+
+Public marketing-lead, feedback-session, and feedback-response writes accept only bounded `application/json` requests. Text, category lists, and arbitrary metadata have contract limits. Rate limits use bounded in-memory buckets only in explicit local runtimes; staging and production use atomic PostgreSQL buckets shared across API replicas and fail closed if that protection is unavailable. `X-Forwarded-For` is ignored unless the immediate peer belongs to `TRUSTED_PROXY_CIDRS`; an approved edge proxy must overwrite, not append to, untrusted client-supplied forwarding headers.
+
+qurl may return an HTTPS asset URL or inline SVG. Heard converts inline SVG to an isolated `data:image/svg+xml` image source and never exposes provider markup for DOM insertion. Public HTTP assets are rejected; loopback HTTP assets are allowed only in explicit local runtimes. The web app also sends a restrictive CSP that disables object embedding and framing.
+
+The worker drains up to `WORKER_BATCH_SIZE` available events per poll and logs attempted, successful, and failed counts. A tenant owner with `outbox:replay` may safely requeue a failed event through `POST /api/v1/outbox-events/{id}/requeue`; the operation is tenant-scoped, resets retry state, and writes an audit record. Other event states cannot be replayed through this endpoint.
+
+Run checks directly with `go test ./...` from `backend`, and `npm test`, `npm run lint`, and `npm run build` from `web`. PostgreSQL concurrency coverage for onboarding runs when `HEARD_TEST_DATABASE_URL` is set.
+
 Reference docs:
 
 - [Slice 1 implementation](./docs/slice1.md)
 - [Slice 2 implementation](./docs/slice2.md)
+- [Slice 3 authenticated activation](./docs/slice3.md)
+- [Slice 4 branded guest experience](./docs/slice4.md)
+- [Slice 5 optional walkthrough](./docs/slice5.md)
+- [Slice 6 self-service onboarding](./docs/slice6.md)
 - [Slice 1 OpenAPI contract](./docs/openapi.slice1.yaml)
