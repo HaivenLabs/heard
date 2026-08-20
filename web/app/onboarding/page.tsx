@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "../../components/auth-gate";
@@ -142,7 +143,7 @@ function Onboarding({ session }: { session: Session }) {
               <Progress done={step === "feedback_link" || step === "complete"} number="2" text="First feedback campaign" />
               <Progress done={step === "complete"} number="3" text="Shareable guest link" />
             </ol>
-            <Link className="mt-9 inline-flex font-body text-sm font-semibold text-ink/48 underline decoration-ink/20 underline-offset-4 hover:text-clay" href="/contact#walkthrough">Want help? Request a walkthrough.</Link>
+            <Link className="mt-9 inline-flex font-body text-sm font-semibold text-ink/48 underline decoration-ink/20 underline-offset-4 hover:text-clay" href={"/walkthrough" as Route}>Want help? Request a walkthrough.</Link>
           </aside>
 
           <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft sm:p-9">

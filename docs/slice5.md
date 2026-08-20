@@ -13,16 +13,16 @@ As an existing heard customer, I can reach a dedicated sign-in page without seei
 ## Scope
 
 - Separate optional walkthrough and existing-customer sign-in journeys.
-- Preserve `/contact` as a secondary help path; once Slice 6 ships, primary restaurant calls to action start self-service onboarding and customer sign-in remains available for returning users.
+- Preserve `/walkthrough` as a secondary help path; once Slice 6 ships, primary restaurant calls to action start self-service onboarding and customer sign-in remains available for returning users.
 - Plain-language homepage feedback states that connect a newly received low rating directly to the Recovery inbox without implying a separate live-feed product.
 - One shared public header across the homepage and contact journey so conversion actions never disappear between steps.
 - A consistent light editorial canvas using parchment, a subtle grid, clay and olive atmosphere, ink accent panels, and the same card and button treatment used by the management console.
 - Headline-first hierarchy: the distinctive product line is the primary heading and the explanatory promise is its subtitle, not a competing second headline.
 - A deliberately concise contact page with one operator story and one next-step explanation beside the lead form; no stacked feature lists or redundant sales sections.
-- Public `/contact` page with product outcomes, expectations, and a short lead form.
+- Public `/walkthrough` page with product outcomes, expectations, and a short lead form.
 - Public `POST /api/v1/marketing-leads` endpoint.
 - Durable `marketing_leads` storage for sales follow-up.
-- Walkthrough-specific CTAs route to `/contact` with source attribution. Primary product CTAs move to self-service onboarding in Slice 6.
+- Walkthrough-specific CTAs route to `/walkthrough` with source attribution. Primary product CTAs move to self-service onboarding in Slice 6.
 - Public-facing copy contains no local-development or Passage implementation details.
 
 ## Non-goals

@@ -15,7 +15,8 @@ assert.doesNotMatch(source, /rating === 2 \? "drop-shadow/);
 
 assert.match(headerSource, /\/start\?source=homepage/);
 assert.match(headerSource, />Start using heard</);
-assert.match(headerSource, /\/contact#walkthrough/);
+assert.match(headerSource, /\/walkthrough/);
+assert.doesNotMatch(headerSource, /contact#walkthrough/);
 assert.match(headerSource, />Try guest experience</);
 assert.match(headerSource, /href=["']\/login["'][^>]*>Sign in</);
 assert.match(source, />Start using heard</);

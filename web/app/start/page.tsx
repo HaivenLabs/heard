@@ -50,7 +50,7 @@ export default function StartPage() {
           <p className="mt-20 font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">Start with one location</p>
           <h1 className="mt-5 max-w-3xl font-display text-5xl leading-[1.02] tracking-[-0.055em] sm:text-7xl">Your first guest feedback campaign is minutes away.</h1>
           <p className="mt-6 max-w-xl font-body text-lg leading-8 text-ink/60">Create your account, add your restaurant and first location, then publish a ready-to-share feedback link. No call or approval required.</p>
-          <Link className="mt-8 inline-flex font-body text-sm font-semibold text-ink/55 underline decoration-ink/20 underline-offset-4 hover:text-clay" href="/contact#walkthrough">Unsure? Request a walkthrough instead.</Link>
+          <Link className="mt-8 inline-flex font-body text-sm font-semibold text-ink/55 underline decoration-ink/20 underline-offset-4 hover:text-clay" href={"/walkthrough" as Route}>Unsure? Request a walkthrough instead.</Link>
         </section>
 
         <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-7 shadow-[0_32px_90px_rgba(23,37,29,0.16)] sm:p-10">

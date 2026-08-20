@@ -179,7 +179,7 @@ Then open:
 - `http://localhost:3010` for the web app
 - `http://localhost:3010/start` to create a local self-service account context
 - `http://localhost:3010/onboarding` to resume restaurant, location, and first-campaign setup
-- `http://localhost:3010/contact` for the optional walkthrough journey
+- `http://localhost:3010/walkthrough` for the optional walkthrough journey
 - `http://localhost:3010/api/v1/healthz` for the same-origin API health endpoint
 - `http://localhost:8082/api/v1/healthz` for direct API development and debugging
 - `http://localhost:3010/login` for existing-customer sign-in
@@ -196,7 +196,7 @@ Default seeded tenant header:
 
 `/start` is the primary local self-service journey. Any valid email resolves a deterministic, dedicated account context through the development-only Passage adapter; onboarding then creates or resumes the restaurant workspace and first location and carries the operator into a ready-to-share first campaign. Retries are idempotent, and a qurl outage does not prevent the feedback link from working. Existing-customer `/login` continues to use the seeded demo tenant.
 
-`/contact` remains an optional request for a tailored walkthrough and never gates product access. `APP_ENV` is required and accepts only `local`, `docker`, `test`, `staging`, or `production`; unknown and misspelled values prevent startup. The local Passage adapter and demo seed are allowed only in the three explicit local runtimes, and local authentication additionally requires loopback public/web/CORS origins. Docker publishes database, API, and web ports on loopback only. Staging and production require Passage JWKS authentication, secure browser cookies, HTTPS Passage endpoints, and `HEARD_SEED_DEMO=false`.
+`/walkthrough` remains an optional request for a tailored walkthrough and never gates product access. `APP_ENV` is required and accepts only `local`, `docker`, `test`, `staging`, or `production`; unknown and misspelled values prevent startup. The local Passage adapter and demo seed are allowed only in the three explicit local runtimes, and local authentication additionally requires loopback public/web/CORS origins. Docker publishes database, API, and web ports on loopback only. Staging and production require Passage JWKS authentication, secure browser cookies, HTTPS Passage endpoints, and `HEARD_SEED_DEMO=false`.
 
 Production browser entry starts at the provider-neutral `GET /api/v1/auth/start`. Heard stores PKCE verifier, state, and a same-site return path in short-lived HttpOnly cookies; Passage returns a single-use authorization code; Heard exchanges it server-side using `PASSAGE_CLIENT_ID` and the exact registered `PASSAGE_CALLBACK_URL`. The product JWT is verified and kept only in the Secure/HttpOnly `heard_session` cookie. It is never placed in a browser URL or local storage. Provider-specific route names are not exposed by the heard consumer contract.
 

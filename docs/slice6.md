@@ -17,7 +17,7 @@ As a restaurant operator new to heard, I can create my account, set up my restau
 ## Scope
 
 - Primary homepage and guest-demo calls to action start self-service onboarding.
-- `/contact` remains a secondary `Request a walkthrough` path for operators who want assistance.
+- `/walkthrough` remains a secondary `Request a walkthrough` path for operators who want assistance.
 - Passage-owned registration, authentication, session, and account recovery integration.
 - Idempotent creation of the first heard tenant, owner membership, restaurant profile, and location after Passage resolves identity.
 - A short onboarding sequence that asks only for information required to create the first campaign.

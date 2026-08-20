@@ -9,7 +9,7 @@ import { isValidEmail, isValidPhone } from "../../lib/contact-validation";
 
 type LeadSource = "marketing_site" | "guest_demo";
 
-export default function ContactForm({ source }: { source: LeadSource }) {
+export default function WalkthroughForm({ source }: { source: LeadSource }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lead, setLead] = useState<MarketingLead | null>(null);
@@ -68,7 +68,7 @@ export default function ContactForm({ source }: { source: LeadSource }) {
           <p className="mt-8 max-w-xl border-l-2 border-olive/55 pl-5 font-body text-sm leading-7 text-ink/55"><strong className="font-semibold text-ink">What happens next:</strong> a real person from heard will learn how you collect feedback today and tailor the walkthrough to your restaurant.</p>
         </section>
 
-        <section className="rounded-[2rem] border border-ink/10 bg-[#fffaf0]/95 p-6 text-ink shadow-[0_28px_80px_rgba(23,37,29,0.14)] backdrop-blur-sm sm:p-9" id="walkthrough">
+        <section className="rounded-[2rem] border border-ink/10 bg-[#fffaf0]/95 p-6 text-ink shadow-[0_28px_80px_rgba(23,37,29,0.14)] backdrop-blur-sm sm:p-9">
           {lead ? (
             <div className="py-8 text-center">
               <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-olive/15 text-3xl text-olive">&#10003;</div>

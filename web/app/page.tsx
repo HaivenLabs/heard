@@ -90,7 +90,7 @@ export default function HomePage() {
           <Link className="mt-9 rounded-full bg-clay px-8 py-4 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:-translate-y-0.5 hover:bg-[#b95635]" href={"/start?source=homepage" as Route}>Start using heard</Link>
           <div className="mt-12 flex flex-wrap justify-center gap-5 font-body text-sm text-parchment/45">
             <Link className="hover:text-parchment" href="/f/demo-heard">Guest demo</Link>
-            <Link className="hover:text-parchment" href={"/contact#walkthrough" as Route}>Request a walkthrough</Link>
+            <Link className="hover:text-parchment" href={"/walkthrough" as Route}>Request a walkthrough</Link>
             <Link className="hover:text-parchment" href="/login">Customer sign in</Link>
           </div>
         </div>

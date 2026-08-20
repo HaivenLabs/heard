@@ -1,8 +1,6 @@
-import ContactForm from "./contact-form";
+import { redirect } from "next/navigation";
+import type { Route } from "next";
 
-export default async function ContactPage({ searchParams }: { searchParams: Promise<{ source?: string }> }) {
-  const params = await searchParams;
-  const source = params.source === "guest_demo" ? "guest_demo" : "marketing_site";
-
-  return <ContactForm source={source} />;
+export default function ContactPage() {
+  redirect("/walkthrough" as Route);
 }
