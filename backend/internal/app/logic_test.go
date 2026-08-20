@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestNullableUUID(t *testing.T) {
 	value, err := nullableUUID("11111111-1111-1111-1111-111111111111")
@@ -235,5 +239,24 @@ func TestServerCampaignMetadataCannotOptOutOfFlyerRules(t *testing.T) {
 	metadata := enforceCampaignMetadata(map[string]any{"campaign_type": "other", "follow_up_required": false, "public_review_prompt": true}, true, 4)
 	if metadata["campaign_type"] != "flyer_giveaway" || metadata["follow_up_required"] != true || metadata["public_review_prompt"] != false {
 		t.Fatalf("server rules were not enforced: %#v", metadata)
+	}
+}
+
+func TestValidatePublicFeedbackInputBounds(t *testing.T) {
+	if err := validateFeedbackSessionInput(createFeedbackSessionRequest{Token: "token", GuestName: strings.Repeat("x", 121)}); err == nil {
+		t.Fatal("expected oversized guest name to be rejected")
+	}
+	if err := validateSubmitFeedbackInput(submitFeedbackRequest{FeedbackSessionID: "11111111-1111-1111-1111-111111111111", Rating: 4, Comment: strings.Repeat("x", 2001)}); err == nil {
+		t.Fatal("expected oversized feedback comment to be rejected")
+	}
+	if err := validateSubmitFeedbackInput(submitFeedbackRequest{FeedbackSessionID: "11111111-1111-1111-1111-111111111111", Rating: 4, Categories: make([]string, 11)}); err == nil {
+		t.Fatal("expected oversized category list to be rejected")
+	}
+	metadata := map[string]any{}
+	for index := 0; index < 21; index++ {
+		metadata[fmt.Sprintf("key-%02d", index)] = true
+	}
+	if err := validatePublicMetadata(metadata); err == nil {
+		t.Fatal("expected excessive metadata keys to be rejected")
 	}
 }

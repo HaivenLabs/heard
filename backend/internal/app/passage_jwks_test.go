@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -125,7 +126,7 @@ func TestPassageVerifierFailsClosedWhenJWKSUnavailable(t *testing.T) {
 	p := providerFor(t, server.URL, func() time.Time { return now })
 	token := keys.token(t, baseClaims(now))
 	server.Close()
-	if _, err := p.VerifyToken(context.Background(), token); err == nil {
+	if _, err := p.VerifyToken(context.Background(), token); !errors.Is(err, errIdentityUnavailable) {
 		t.Fatal("unavailable uncached JWKS accepted")
 	}
 }

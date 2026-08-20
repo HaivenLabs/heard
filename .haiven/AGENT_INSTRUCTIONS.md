@@ -103,6 +103,10 @@ Use Passage for shared identity.
 
 Use qurl for QR generation.
 
+Shared-service ownership is an implementation boundary, not permission to expose the service as part of a consumer product's UX.
+
+Consumer products must own their complete branded customer journey. Do not put Passage, qurl, provider, sandbox, adapter, hosted-service, or other infrastructure names in consumer-facing copy, controls, errors, screens, or URLs unless the user explicitly requires that disclosure. Use provider-neutral interfaces and routes in consumer code; keep provider names inside adapters, configuration, internal contracts, and operator documentation.
+
 Do not implement product-local replacements for shared services unless:
 
 - the shared service does not exist yet
@@ -179,6 +183,8 @@ User-facing and admin-facing surfaces need:
 - useful error states
 - accessible labels and contrast
 - clear interaction states
+
+Registration, login, recovery, and account-management screens must read as native parts of the consumer product, even when a shared Haiven service performs the underlying operation.
 
 The first usable slice should be screenshot-ready.
 

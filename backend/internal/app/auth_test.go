@@ -129,6 +129,28 @@ func TestAdminContextRejectsMissingPermission(t *testing.T) {
 	}
 }
 
+func TestOwnerContextRejectsNonOwnerWithPermission(t *testing.T) {
+	server := &Server{identity: stubIdentityProvider{identity: Identity{
+		UserID:      "user-1",
+		Role:        "admin",
+		TenantIDs:   []string{demoTenantID},
+		Permissions: []string{"outbox:replay"},
+	}}}
+	handler := server.withOwnerContext("outbox:replay", func(w http.ResponseWriter, _ *http.Request, _ actorContext) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/outbox-events/00000000-0000-0000-0000-000000000000/requeue", nil)
+	request.Header.Set("Authorization", "Bearer valid")
+	request.Header.Set("X-Heard-Tenant-ID", demoTenantID)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("got status %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+}
+
 func TestLocalPassageCannotRunInProduction(t *testing.T) {
 	_, err := NewIdentityProvider(Config{
 		AppEnv:             "production",
@@ -137,6 +159,18 @@ func TestLocalPassageCannotRunInProduction(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected local Passage mode to be rejected in production")
+	}
+}
+
+func TestLocalMintRoutesAreAbsentWithoutLocalAdapter(t *testing.T) {
+	server := &Server{cfg: Config{AppEnv: "production"}, identity: stubIdentityProvider{}}
+	for _, path := range []string{"/api/v1/auth/local/session", "/api/v1/auth/local/registration"} {
+		request := httptest.NewRequest(http.MethodPost, path, nil)
+		recorder := httptest.NewRecorder()
+		server.Router().ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want route absent", path, recorder.Code)
+		}
 	}
 }
 

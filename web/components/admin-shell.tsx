@@ -17,8 +17,9 @@ export function AdminShell({ children, session }: { children: ReactNode; session
   const pathname = usePathname();
   const router = useRouter();
 
-  function signOut() {
+  async function signOut() {
     clearStoredSession();
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     router.replace("/login");
   }
 

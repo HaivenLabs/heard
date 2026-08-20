@@ -384,12 +384,15 @@ Product repos own:
 
 - product-specific authorization decisions
 - product-specific permission checks
+- the complete branded registration, login, recovery, and account-management experience presented to their customers
 - product-specific user experience after identity is resolved
 - product-specific account onboarding where Passage delegates context
 
 Requirements:
 
 - Production admin surfaces require authentication.
+- Passage is invisible infrastructure to consumer-product users. Consumer-facing copy, controls, errors, URLs, and screens must use the consumer product's brand and provider-neutral language unless a legal or compliance requirement explicitly requires disclosure.
+- Consumer applications must call provider-neutral identity interfaces and routes; Passage-specific names belong only in adapter implementations, internal contracts, configuration, and operator documentation.
 - Third-party identity providers should be pluggable through provider abstractions.
 - Role and tenant scoping must be enforced after authentication.
 - Local development may use a clearly labeled auth bypass only in non-production environments.
@@ -398,6 +401,8 @@ Requirements:
 Definition of done:
 
 - Product auth paths use Passage or a temporary documented adapter.
+- Registration, login, recovery, and account-management flows remain visually and verbally owned by the consumer product.
+- Automated tests prevent shared-service or provider names from leaking into consumer-facing auth surfaces.
 - Role and tenant checks are enforced for authenticated requests.
 - Local auth bypass cannot run in production mode.
 - Product-specific permissions are tested.

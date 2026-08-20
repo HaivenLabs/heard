@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { ReactNode, useEffect, useState } from "react";
-import { getStoredSession, Session } from "../lib/api";
+import { resolveSession, Session } from "../lib/api";
 
 export function AuthGate({ children }: { children: (session: Session) => ReactNode }) {
   const pathname = usePathname();
@@ -11,12 +11,16 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
-    const stored = getStoredSession();
-    setSession(stored);
-    if (!stored) {
-      const requested = `${pathname}${window.location.search}`;
-      router.replace(`/login?next=${encodeURIComponent(requested)}` as Route);
-    }
+    let active = true;
+    void resolveSession().then((current) => {
+      if (!active) return;
+      setSession(current);
+      if (!current) {
+        const requested = `${pathname}${window.location.search}`;
+        router.replace(`/login?next=${encodeURIComponent(requested)}` as Route);
+      }
+    });
+    return () => { active = false; };
   }, [pathname, router]);
 
   if (!session) {

@@ -31,7 +31,7 @@ As an existing restaurant customer, I can sign in, see my workspace, and start b
 
 ## API contract
 
-The canonical contract is `docs/openapi.slice1.yaml`, version `0.5.0`.
+The canonical contract is `docs/openapi.slice1.yaml`, version `0.6.0`.
 
 - `POST /api/v1/auth/local/session` issues a development-only session when `PASSAGE_MODE=local`.
 - `GET /api/v1/session` resolves the authenticated identity.
@@ -51,7 +51,7 @@ Heard consumes this provider-neutral identity shape:
 - permission claims
 - identity provider name
 
-The local adapter is a fake provider behind the same interface intended for Passage. It maps every valid local email to the seeded demo tenant and grants the owner role. It cannot be enabled when `APP_ENV=production`.
+The local adapter is a fake provider behind the same interface intended for Passage. It maps every valid local email to the seeded demo tenant and grants the owner role. It can be enabled only when `APP_ENV` is explicitly `local`, `docker`, or `test`, all public/browser/CORS origins are loopback, and a local secret is configured. Unknown environments fail closed. Staging and production require the JWKS provider and prohibit demo seeding.
 
 Slice 6A adds a separate local registration operation that deterministically resolves a dedicated account context for each email. Existing-customer local sign-in continues to use the seeded tenant so the demo and returning-customer workflow remain stable.
 
@@ -106,6 +106,6 @@ Replace the local adapter through the `IdentityProvider` interface after Passage
 - Protected manager APIs no longer trust actor headers.
 - A local user can sign in, load the console, and enter campaign creation.
 - Tenant and permission failures are enforced and tested.
-- The local adapter cannot run in production.
+- The local adapter cannot run outside an explicit local runtime or with public origins.
 - API contract and local-run documentation match implementation.
 - Go tests, frontend build, runtime smoke test, and Haiven checks pass.

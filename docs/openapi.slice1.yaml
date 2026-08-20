@@ -1,19 +1,22 @@
 openapi: 3.1.0
 info:
   title: Heard API
-  version: 0.5.0
+  version: 0.6.0
   description: >
     Heard's tenant-scoped campaign, guest feedback, and recovery APIs. Manager
     routes require a Passage-issued Bearer product token and matching tenant membership.
     Production validation requires EdDSA with Passage JWKS, the configured issuer,
     audience `heard`, token expiry, UUID subject and organization claims, a known
     organization role, and a `heard` product-access grant. Client role or tenant
-    headers never create identity authority.
+    headers never create identity authority. JSON request bodies are bounded and
+    public write routes are rate limited per resolved client address. Forwarded
+    client addresses are accepted only from explicitly configured trusted proxies.
 servers:
   - url: http://localhost:3010
     description: Same-origin web gateway for local development
 security:
   - bearerAuth: []
+  - cookieAuth: []
 paths:
   /api/v1/healthz:
     get:
@@ -46,6 +49,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/RequestProtectionUnavailable" }
   /api/v1/auth/local/session:
     post:
       summary: Issue a local Passage-compatible development session
@@ -91,6 +98,29 @@ paths:
                 $ref: "#/components/schemas/Session"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/v1/auth/start:
+    get:
+      summary: Start secure heard account authentication
+      description: Generates state and a PKCE verifier in short-lived HttpOnly SameSite=Lax cookies, then delegates to the configured identity platform. return_to accepts only a same-site relative path. Provider details are not exposed through the consumer contract.
+      security: []
+      parameters:
+        - {name: return_to, in: query, required: false, schema: {type: string, default: /onboarding}}
+        - {name: intent, in: query, required: false, schema: {type: string, enum: [register, login], default: login}}
+        - {name: email, in: query, required: false, schema: {type: string, format: email}}
+      responses:
+        "302": {description: Continue secure account authentication}
+  /api/v1/auth/callback:
+    get:
+      summary: Complete secure heard account authentication
+      description: Validates state, exchanges the one-time PKCE code server-side, verifies the identity token, stores it in an HttpOnly SameSite=Lax heard session cookie, and redirects to the saved same-site path. No token is placed in a browser URL or returned to JavaScript.
+      security: []
+      parameters:
+        - {name: code, in: query, required: true, schema: {type: string}}
+        - {name: state, in: query, required: true, schema: {type: string}}
+      responses:
+        "302": {description: Secure Heard browser session established}
+        "400": {description: State or authorization code is invalid or expired}
+        "503": {description: Identity service unavailable}
   /api/v1/session:
     get:
       summary: Resolve the current Passage identity
@@ -291,6 +321,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicSurvey"
+  /api/v1/public/surveys/by-path/{handle}/{slug}:
+    get:
+      summary: Resolve a public survey campaign by vanity handle and path
+      description: >
+        Resolves the customer's heard-unique handle (tenant slug) and the
+        customer-configurable survey path to a public survey. Multi-segment
+        paths are supported.
+      security: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public survey and feedback link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSurvey"
   /api/v1/locations/{id}:
     get:
       summary: Get location
@@ -318,6 +372,29 @@ paths:
       responses:
         "201":
           description: Feedback link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackLink"
+  /api/v1/feedback-links/{id}:
+    patch:
+      summary: Update feedback link survey path and campaign
+      description: >
+        Re-points an existing feedback link at a campaign and updates its
+        customer-configurable survey path. The destination URL and QR are
+        regenerated for the vanity path.
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/FeedbackLinkId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFeedbackLinkRequest"
+      responses:
+        "200":
+          description: Feedback link updated
           content:
             application/json:
               schema:
@@ -369,6 +446,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackSession"
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/RequestProtectionUnavailable" }
   /api/v1/feedback-responses:
     get:
       summary: List feedback responses
@@ -407,6 +488,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackResponse"
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/RequestProtectionUnavailable" }
   /api/v1/feedback-responses/{id}:
     get:
       summary: Get feedback response
@@ -488,12 +573,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RecoveryCase"
+  /api/v1/outbox-events/{id}/requeue:
+    post:
+      summary: Requeue a failed outbox event
+      description: Owner-only recovery operation. The failed event must belong to the active tenant; pending, processing, and processed events cannot be replayed.
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Failed event safely returned to the pending queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboxRequeueResult"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: The authenticated actor is not the tenant owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: Passage access token
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: heard_session
   responses:
     Unauthorized:
       description: Authentication is missing, invalid, or expired
@@ -507,6 +620,29 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: JSON request body exceeds the documented endpoint limit
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    UnsupportedMediaType:
+      description: Request body must use application/json
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: Public write rate limit exceeded; Retry-After indicates when to retry
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    RequestProtectionUnavailable:
+      description: Shared abuse-protection storage is unavailable; the write fails closed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
   parameters:
     Page:
       name: page
@@ -694,10 +830,14 @@ components:
         location_id: { type: string, format: uuid }
         name: { type: string }
         token: { type: string }
+        slug:
+          type: string
+          description: Customer-configurable vanity path (empty for opaque token links).
         status: { type: string }
         channel: { type: string }
-        qr_asset_url: { type: string }
-        qr_svg: { type: string }
+        qr_asset_url:
+          type: string
+          description: qurl HTTPS asset URL or an isolated data:image SVG URL; provider markup is never injected into the DOM.
         destination_url: { type: string }
         created_at: { type: string, format: date-time }
     FeedbackSession:
@@ -796,39 +936,67 @@ components:
       properties:
         tenant_id: { type: string, format: uuid }
         location_id: { type: string, format: uuid }
+        campaign_id: { type: string, format: uuid }
         name: { type: string }
         channel: { type: string }
+        token:
+          type: string
+          description: Optional opaque token; a random one is generated when omitted.
+        slug:
+          type: string
+          description: Customer-configurable vanity path after the heard handle.
+    UpdateFeedbackLinkRequest:
+      type: object
+      required: [slug]
+      additionalProperties: false
+      properties:
+        slug:
+          type: string
+          description: Customer-configurable vanity path after the heard handle.
+        campaign_id: { type: string, format: uuid }
     CreateFeedbackSessionRequest:
       type: object
       required: [token]
+      additionalProperties: false
       properties:
-        token: { type: string }
-        channel: { type: string }
-        guest_name: { type: string }
-        guest_phone: { type: string }
-        guest_email: { type: string }
-        wants_follow_up: { type: boolean }
-        contact_consent: { type: boolean }
-        marketing_consent: { type: boolean }
-        metadata: { type: object, additionalProperties: true }
-    SubmitFeedbackRequest:
-      type: object
-      description: Flyer giveaway submissions require at least one valid contact method, explicit transactional-contact consent, and a meaningful comment for ratings below 5. Campaign classification is resolved from the server-side feedback link; client metadata cannot opt out of these rules.
-      required: [feedback_session_id, rating]
-      properties:
-        feedback_session_id: { type: string, format: uuid }
-        rating: { type: integer, minimum: 1, maximum: 5 }
-        comment: { type: string }
-        categories:
-          type: array
-          items: { type: string }
-        guest_name: { type: string }
+        token: { type: string, minLength: 1, maxLength: 128 }
+        channel: { type: string, maxLength: 32 }
+        guest_name: { type: string, maxLength: 120 }
         guest_phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
         guest_email: { type: string, format: email, maxLength: 254 }
         wants_follow_up: { type: boolean }
         contact_consent: { type: boolean }
         marketing_consent: { type: boolean }
-        metadata: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          maxProperties: 20
+          propertyNames: { maxLength: 64 }
+          additionalProperties: true
+    SubmitFeedbackRequest:
+      type: object
+      description: Flyer giveaway submissions require at least one valid contact method, explicit transactional-contact consent, and a meaningful comment for ratings below 5. Campaign classification is resolved from the server-side feedback link; client metadata cannot opt out of these rules.
+      required: [feedback_session_id, rating]
+      additionalProperties: false
+      properties:
+        feedback_session_id: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 2000 }
+        categories:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 64 }
+        guest_name: { type: string, maxLength: 120 }
+        guest_phone: { type: string, maxLength: 32, pattern: "^[+()0-9 .-]*$" }
+        guest_email: { type: string, format: email, maxLength: 254 }
+        wants_follow_up: { type: boolean }
+        contact_consent: { type: boolean }
+        marketing_consent: { type: boolean }
+        metadata:
+          type: object
+          maxProperties: 20
+          propertyNames: { maxLength: 64 }
+          additionalProperties: true
     UpdateRecoveryCaseRequest:
       type: object
       required: [status]
@@ -836,3 +1004,11 @@ components:
         status:
           type: string
           enum: [new, open, assigned, waiting_on_guest, waiting_on_internal_action, offer_pending, resolved, closed, spam, duplicate, archived]
+    OutboxRequeueResult:
+      type: object
+      required: [event_id, tenant_id, status, attempts]
+      properties:
+        event_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        status: { type: string, const: pending }
+        attempts: { type: integer, const: 0 }

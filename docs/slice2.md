@@ -46,3 +46,5 @@ This is the first product workflow that matters right now: a Heard restaurant cu
 Heard must not render QR codes itself. It only sends the destination URL to qurl when `QURL_BASE_URL` is configured and stores the asset reference qurl returns.
 
 When qurl is not configured, Heard still creates the campaign and survey link, but QR asset generation is shown as unavailable.
+
+qurl provider SVG is converted to an isolated image data URL before it crosses the Heard API boundary. The admin app renders QR output only through an image element and never inserts provider markup into the DOM. Public cleartext asset URLs are rejected; local loopback assets remain available for offline development.

@@ -3,10 +3,14 @@ package app
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
 var errValidation = errors.New("validation failed")
@@ -146,6 +150,106 @@ func validateMarketingLeadRequest(req createMarketingLeadRequest) error {
 		return validationError("contact consent is required")
 	}
 	return nil
+}
+
+func validateFeedbackSessionInput(req createFeedbackSessionRequest) error {
+	if length := utf8.RuneCountInString(strings.TrimSpace(req.Token)); length < 1 || length > 128 {
+		return validationError("feedback token must be between 1 and 128 characters")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(req.Channel)) > 32 {
+		return validationError("channel must be 32 characters or fewer")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(req.GuestName)) > 120 {
+		return validationError("guest name must be 120 characters or fewer")
+	}
+	if err := validateContactDetails(req.GuestEmail, req.GuestPhone, false); err != nil {
+		return err
+	}
+	return validatePublicMetadata(req.Metadata)
+}
+
+func validateSubmitFeedbackInput(req submitFeedbackRequest) error {
+	if _, err := uuid.Parse(strings.TrimSpace(req.FeedbackSessionID)); err != nil {
+		return validationError("feedback session ID is invalid")
+	}
+	if req.Rating < 1 || req.Rating > 5 {
+		return validationError("rating must be between 1 and 5")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(req.Comment)) > 2000 {
+		return validationError("feedback comment must be 2000 characters or fewer")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(req.GuestName)) > 120 {
+		return validationError("guest name must be 120 characters or fewer")
+	}
+	if len(req.Categories) > 10 {
+		return validationError("choose no more than 10 feedback categories")
+	}
+	seen := map[string]struct{}{}
+	for _, raw := range req.Categories {
+		category := strings.TrimSpace(raw)
+		if length := utf8.RuneCountInString(category); length < 1 || length > 64 {
+			return validationError("feedback categories must be between 1 and 64 characters")
+		}
+		if _, exists := seen[category]; exists {
+			return validationError("feedback categories must be unique")
+		}
+		seen[category] = struct{}{}
+	}
+	if err := validateContactDetails(req.GuestEmail, req.GuestPhone, false); err != nil {
+		return err
+	}
+	return validatePublicMetadata(req.Metadata)
+}
+
+func validatePublicMetadata(metadata map[string]any) error {
+	if len(metadata) > 20 {
+		return validationError("metadata must contain no more than 20 keys")
+	}
+	raw, err := json.Marshal(defaultMetadata(metadata))
+	if err != nil {
+		return validationError("metadata must be valid JSON")
+	}
+	if len(raw) > 4096 {
+		return validationError("metadata must be 4 KiB or smaller")
+	}
+	return validateMetadataValue(metadata, 0)
+}
+
+func validateMetadataValue(value any, depth int) error {
+	if depth > 3 {
+		return validationError("metadata nesting is too deep")
+	}
+	switch typed := value.(type) {
+	case nil, bool, float64, json.Number:
+		return nil
+	case string:
+		if utf8.RuneCountInString(typed) > 500 {
+			return validationError("metadata strings must be 500 characters or fewer")
+		}
+		return nil
+	case []any:
+		if len(typed) > 20 {
+			return validationError("metadata lists must contain no more than 20 items")
+		}
+		for _, item := range typed {
+			if err := validateMetadataValue(item, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]any:
+		for key, item := range typed {
+			if length := utf8.RuneCountInString(strings.TrimSpace(key)); length < 1 || length > 64 {
+				return validationError("metadata keys must be between 1 and 64 characters")
+			}
+			if err := validateMetadataValue(item, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return validationError("metadata contains an unsupported value")
+	}
 }
 
 func sentimentFromRating(rating int) string {

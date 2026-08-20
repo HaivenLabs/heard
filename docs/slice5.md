@@ -34,7 +34,7 @@ As an existing heard customer, I can reach a dedicated sign-in page without seei
 
 ## API contract
 
-The canonical contract is `docs/openapi.slice1.yaml`, version `0.5.0`.
+The canonical contract is `docs/openapi.slice1.yaml`, version `0.6.0`.
 
 `POST /api/v1/marketing-leads` is public because prospects are not authenticated. It accepts name, work email, optional phone, restaurant name, location count, optional challenge context, source attribution, and explicit contact consent.
 

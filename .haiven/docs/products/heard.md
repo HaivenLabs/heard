@@ -10,6 +10,8 @@ A restaurant guest experience platform that helps restaurants collect private fe
 
 Heard should let a restaurant operator begin using the product without a mandatory sales conversation. The primary public journey is self-service activation: Passage-owned account registration, creation of the first restaurant workspace and location, and direct entry into the first campaign workflow.
 
+The entire journey is heard-branded. Passage is an internal platform dependency and must never appear in customer-facing heard copy, controls, errors, screens, or URLs. Heard presents native registration, login, recovery, and account-management experiences through provider-neutral identity interfaces.
+
 An optional walkthrough remains available for operators who are unsure or want implementation help, but it must not gate registration, workspace activation, or initial product value. Onboarding should request only the information required for the next product step and defer sales qualification, advanced configuration, integrations, and commercial-plan decisions until they are relevant.
 
 ## Responsibilities

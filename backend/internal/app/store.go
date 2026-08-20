@@ -51,8 +51,8 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 
 	if _, err := s.pool.Exec(ctx, `
 		insert into tenants (id, name, slug)
-		values ($1, 'Sunday Hearth', 'sunday-hearth')
-		on conflict (id) do nothing
+		values ($1, 'nom', 'nom')
+		on conflict (id) do update set name = excluded.name, slug = excluded.slug
 	`, demoTenantID); err != nil {
 		return err
 	}
@@ -66,12 +66,12 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, `
 		insert into survey_campaigns (
 			id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, status
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status
 		)
 		values (
 			$1, $2, $3, 'Takeout bag gift card survey', 'nom', 'How did we do?',
 			'Tap the face that matches your visit.', 'Complete this survey for a chance to win a $100 nom gift card.',
-			'WIN', '(877) 426-0492', $4, $5, 'active'
+			'WIN', '(877) 426-0492', $4, $5, '/brands/nom/logo.png', 'teal', 'active'
 		)
 		on conflict (id) do update set
 			restaurant_name = excluded.restaurant_name,
@@ -79,8 +79,17 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 			prompt = excluded.prompt,
 			incentive_text = excluded.incentive_text,
 			google_review_url = excluded.google_review_url,
-			yelp_review_url = excluded.yelp_review_url
+			yelp_review_url = excluded.yelp_review_url,
+			logo_url = excluded.logo_url,
+			theme = excluded.theme
 	`, demoCampaignID, demoTenantID, demoLocationID, demoGoogleReviewURL, demoYelpReviewURL); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx, `
+		update survey_campaigns
+		set google_review_url = $1, yelp_review_url = $2
+		where (google_review_url = '' or yelp_review_url = '') and lower(restaurant_name) = 'nom'
+	`, demoGoogleReviewURL, demoYelpReviewURL); err != nil {
 		return err
 	}
 	_, err := s.pool.Exec(ctx, `
@@ -223,17 +232,18 @@ func (s *Store) GetOnboardingState(ctx context.Context, identity Identity) (Onbo
 	if state.Campaign != nil {
 		link := FeedbackLink{}
 		err = s.pool.QueryRow(ctx, `
-			select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, status, channel,
+			select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, slug, status, channel,
 				qr_asset_url, qr_svg, destination_url, created_at
 			from feedback_links
 			where tenant_id = $1 and campaign_id = $2
 			order by created_at asc
 			limit 1
 		`, tenant.ID, state.Campaign.ID).Scan(
-			&link.ID, &link.TenantID, &link.LocationID, &link.CampaignID, &link.Name, &link.Token, &link.Status,
-			&link.Channel, &link.QRAssetURL, &link.QRSVG, &link.Destination, &link.CreatedAt,
+		&link.ID, &link.TenantID, &link.LocationID, &link.CampaignID, &link.Name, &link.Token, &link.Slug, &link.Status,
+		&link.Channel, &link.QRAssetURL, &link.QRSVG, &link.Destination, &link.CreatedAt,
 		)
 		if err == nil {
+			isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
 			state.FeedbackLink = &link
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return OnboardingState{}, err
@@ -280,7 +290,6 @@ func (s *Store) ActivateRestaurantWorkspace(ctx context.Context, identity Identi
 	locationID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("heard-first-location:"+tenantID)).String()
 	eventID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("heard-workspace-activated:"+activationID)).String()
 	now := time.Now().UTC()
-	tenantSlug := fmt.Sprintf("%s-%s", slugify("", req.RestaurantName), strings.ToLower(tenantID[:8]))
 	locationSlug := slugify("", req.LocationName)
 
 	tx, err := s.pool.Begin(ctx)
@@ -288,10 +297,7 @@ func (s *Store) ActivateRestaurantWorkspace(ctx context.Context, identity Identi
 		return OnboardingState{}, err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `
-		insert into tenants (id, name, slug) values ($1, $2, $3)
-		on conflict (id) do nothing
-	`, tenantID, req.RestaurantName, tenantSlug); err != nil {
+	if _, err := claimTenantHandle(ctx, tx, tenantID, req.RestaurantName); err != nil {
 		return OnboardingState{}, err
 	}
 	if _, err := tx.Exec(ctx, `
@@ -415,21 +421,23 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 		IncentiveText:   defaultString(strings.TrimSpace(req.IncentiveText), "Complete this survey for a chance to win a $100 gift card."),
 		SMSKeyword:      strings.TrimSpace(req.SMSKeyword),
 		SMSPhone:        strings.TrimSpace(req.SMSPhone),
-		GoogleReviewURL: strings.TrimSpace(req.GoogleReviewURL),
-		YelpReviewURL:   strings.TrimSpace(req.YelpReviewURL),
+		GoogleReviewURL: defaultString(strings.TrimSpace(req.GoogleReviewURL), demoGoogleReviewURL),
+		YelpReviewURL:   defaultString(strings.TrimSpace(req.YelpReviewURL), demoYelpReviewURL),
+		LogoURL:         defaultString(strings.TrimSpace(req.LogoURL), "/brands/nom/logo.png"),
+		Theme:           defaultString(strings.TrimSpace(req.Theme), "teal"),
 		Status:          "active",
 	}
 
 	if err := s.pool.QueryRow(ctx, `
 		insert into survey_campaigns (
 			id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, status
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		returning created_at
 	`, campaign.ID, campaign.TenantID, campaign.LocationID, campaign.Name, campaign.RestaurantName, campaign.Headline,
 		campaign.Prompt, campaign.IncentiveText, campaign.SMSKeyword, campaign.SMSPhone, campaign.GoogleReviewURL,
-		campaign.YelpReviewURL, campaign.Status,
+		campaign.YelpReviewURL, campaign.LogoURL, campaign.Theme, campaign.Status,
 	).Scan(&campaign.CreatedAt); err != nil {
 		return SurveyCampaign{}, err
 	}
@@ -443,7 +451,7 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 func (s *Store) ListSurveyCampaigns(ctx context.Context, tenantID string) ([]SurveyCampaign, error) {
 	rows, err := s.pool.Query(ctx, `
 		select id::text, tenant_id::text, location_id::text, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, status, created_at
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status, created_at
 		from survey_campaigns
 		where tenant_id = $1
 		order by created_at desc
@@ -467,7 +475,7 @@ func (s *Store) ListSurveyCampaigns(ctx context.Context, tenantID string) ([]Sur
 func (s *Store) GetSurveyCampaign(ctx context.Context, tenantID, campaignID string) (SurveyCampaign, error) {
 	row := s.pool.QueryRow(ctx, `
 		select id::text, tenant_id::text, location_id::text, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, status, created_at
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status, created_at
 		from survey_campaigns
 		where tenant_id = $1 and id = $2
 	`, tenantID, campaignID)
@@ -494,6 +502,7 @@ func (s *Store) CreateFeedbackLink(ctx context.Context, tenantID, actorID, actor
 			return FeedbackLink{}, err
 		}
 	}
+	slug := optionalSlug(req.Slug)
 
 	link := FeedbackLink{
 		ID:         uuid.NewString(),
@@ -502,24 +511,70 @@ func (s *Store) CreateFeedbackLink(ctx context.Context, tenantID, actorID, actor
 		CampaignID: strings.TrimSpace(req.CampaignID),
 		Name:       defaultString(strings.TrimSpace(req.Name), "Feedback QR"),
 		Token:      token,
+		Slug:       slug,
 		Status:     "active",
 		Channel:    defaultString(req.Channel, "qr"),
 	}
-	link.Destination = strings.TrimRight(s.cfg.WebBaseURL, "/") + "/f/" + link.Token
+	if link.Slug != "" {
+		tenant, err := s.GetTenant(ctx, tenantID)
+		if err != nil {
+			return FeedbackLink{}, err
+		}
+		link.Destination = strings.TrimRight(s.cfg.WebBaseURL, "/") + "/f/" + tenant.Slug + "/" + link.Slug
+	} else {
+		link.Destination = strings.TrimRight(s.cfg.WebBaseURL, "/") + "/f/" + link.Token
+	}
 
 	if qr, err := s.qurlProvider.GenerateFeedbackQR(ctx, link.Destination); err == nil {
 		link.QRAssetURL = qr.AssetURL
-		link.QRSVG = qr.SVG
+		link.QRSVG = ""
 	}
 
 	if err := s.pool.QueryRow(ctx, `
-		insert into feedback_links (id, tenant_id, location_id, campaign_id, name, token, status, channel, destination_url, qr_asset_url, qr_svg)
-		values ($1, $2, $3, nullif($4, '')::uuid, $5, $6, $7, $8, $9, $10, $11)
+		insert into feedback_links (id, tenant_id, location_id, campaign_id, name, token, slug, status, channel, destination_url, qr_asset_url, qr_svg)
+		values ($1, $2, $3, nullif($4, '')::uuid, $5, $6, $7, $8, $9, $10, $11, $12)
 		returning created_at
-	`, link.ID, link.TenantID, link.LocationID, link.CampaignID, link.Name, link.Token, link.Status, link.Channel, link.Destination, link.QRAssetURL, link.QRSVG).Scan(&link.CreatedAt); err != nil {
+	`, link.ID, link.TenantID, link.LocationID, link.CampaignID, link.Name, link.Token, link.Slug, link.Status, link.Channel, link.Destination, link.QRAssetURL, link.QRSVG).Scan(&link.CreatedAt); err != nil {
 		return FeedbackLink{}, err
 	}
-	_ = s.writeAudit(ctx, pgx.Tx(nil), tenantID, actorID, actorRole, "feedback_link.created", "feedback_link", link.ID, map[string]any{"location_id": link.LocationID, "channel": link.Channel})
+	_ = s.writeAudit(ctx, pgx.Tx(nil), tenantID, actorID, actorRole, "feedback_link.created", "feedback_link", link.ID, map[string]any{"location_id": link.LocationID, "channel": link.Channel, "slug": link.Slug})
+	return link, nil
+}
+
+func (s *Store) UpdateFeedbackLink(ctx context.Context, tenantID, actorID, actorRole, linkID string, req updateFeedbackLinkRequest) (FeedbackLink, error) {
+	link, err := s.ResolveFeedbackLinkByID(ctx, tenantID, linkID)
+	if err != nil {
+		return FeedbackLink{}, err
+	}
+	cleanSlug := optionalSlug(req.Slug)
+	if cleanSlug == "" {
+		return FeedbackLink{}, errors.New("a survey path is required")
+	}
+	campaignID := strings.TrimSpace(req.CampaignID)
+	if campaignID != "" {
+		if _, err := s.GetSurveyCampaign(ctx, tenantID, campaignID); err != nil {
+			return FeedbackLink{}, errors.New("campaign not found for tenant")
+		}
+		link.CampaignID = campaignID
+	}
+	tenant, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		return FeedbackLink{}, err
+	}
+	link.Slug = cleanSlug
+	link.Destination = strings.TrimRight(s.cfg.WebBaseURL, "/") + "/f/" + tenant.Slug + "/" + link.Slug
+	if qr, err := s.qurlProvider.GenerateFeedbackQR(ctx, link.Destination); err == nil {
+		link.QRAssetURL = qr.AssetURL
+		link.QRSVG = ""
+	}
+	if _, err := s.pool.Exec(ctx, `
+		update feedback_links
+		set slug = $1, destination_url = $2, qr_asset_url = $3, qr_svg = $4, campaign_id = nullif($5, '')::uuid
+		where id = $6 and tenant_id = $7
+	`, link.Slug, link.Destination, link.QRAssetURL, link.QRSVG, link.CampaignID, link.ID, tenantID); err != nil {
+		return FeedbackLink{}, err
+	}
+	_ = s.writeAudit(ctx, pgx.Tx(nil), tenantID, actorID, actorRole, "feedback_link.updated", "feedback_link", link.ID, map[string]any{"slug": link.Slug})
 	return link, nil
 }
 
@@ -533,7 +588,7 @@ func (s *Store) RegenerateFeedbackLinkQR(ctx context.Context, tenantID, linkID s
 		return FeedbackLink{}, err
 	}
 	link.QRAssetURL = qr.AssetURL
-	link.QRSVG = qr.SVG
+	link.QRSVG = ""
 	if _, err := s.pool.Exec(ctx, `
 		update feedback_links
 		set qr_asset_url = $1, qr_svg = $2
@@ -547,7 +602,7 @@ func (s *Store) RegenerateFeedbackLinkQR(ctx context.Context, tenantID, linkID s
 func (s *Store) ResolveFeedbackLink(ctx context.Context, token string) (FeedbackLink, error) {
 	link := FeedbackLink{}
 	err := s.pool.QueryRow(ctx, `
-		select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, status, channel, qr_asset_url, qr_svg, destination_url, created_at
+		select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, slug, status, channel, qr_asset_url, qr_svg, destination_url, created_at
 		from feedback_links
 		where token = $1 and status = 'active'
 	`, token).Scan(
@@ -557,6 +612,7 @@ func (s *Store) ResolveFeedbackLink(ctx context.Context, token string) (Feedback
 		&link.CampaignID,
 		&link.Name,
 		&link.Token,
+		&link.Slug,
 		&link.Status,
 		&link.Channel,
 		&link.QRAssetURL,
@@ -564,13 +620,16 @@ func (s *Store) ResolveFeedbackLink(ctx context.Context, token string) (Feedback
 		&link.Destination,
 		&link.CreatedAt,
 	)
+	if err == nil {
+		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
+	}
 	return link, err
 }
 
 func (s *Store) ResolveFeedbackLinkByID(ctx context.Context, tenantID, linkID string) (FeedbackLink, error) {
 	link := FeedbackLink{}
 	err := s.pool.QueryRow(ctx, `
-		select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, status, channel, qr_asset_url, qr_svg, destination_url, created_at
+		select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, slug, status, channel, qr_asset_url, qr_svg, destination_url, created_at
 		from feedback_links
 		where id = $1 and tenant_id = $2
 	`, linkID, tenantID).Scan(
@@ -580,6 +639,7 @@ func (s *Store) ResolveFeedbackLinkByID(ctx context.Context, tenantID, linkID st
 		&link.CampaignID,
 		&link.Name,
 		&link.Token,
+		&link.Slug,
 		&link.Status,
 		&link.Channel,
 		&link.QRAssetURL,
@@ -587,6 +647,9 @@ func (s *Store) ResolveFeedbackLinkByID(ctx context.Context, tenantID, linkID st
 		&link.Destination,
 		&link.CreatedAt,
 	)
+	if err == nil {
+		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
+	}
 	return link, err
 }
 
@@ -595,6 +658,46 @@ func (s *Store) GetPublicSurvey(ctx context.Context, token string) (PublicSurvey
 	if err != nil {
 		return PublicSurvey{}, err
 	}
+	return s.publicSurveyForLink(ctx, link)
+}
+
+func (s *Store) GetPublicSurveyByPath(ctx context.Context, handle, slug string) (PublicSurvey, error) {
+	link, err := s.resolveFeedbackLinkByHandleSlug(ctx, handle, slug)
+	if err != nil {
+		return PublicSurvey{}, err
+	}
+	return s.publicSurveyForLink(ctx, link)
+}
+
+func (s *Store) resolveFeedbackLinkByHandleSlug(ctx context.Context, handle, slug string) (FeedbackLink, error) {
+	link := FeedbackLink{}
+	err := s.pool.QueryRow(ctx, `
+		select fl.id::text, fl.tenant_id::text, fl.location_id::text, coalesce(fl.campaign_id::text, ''), fl.name, fl.token, fl.slug, fl.status, fl.channel, fl.qr_asset_url, fl.qr_svg, fl.destination_url, fl.created_at
+		from feedback_links fl
+		join tenants t on t.id = fl.tenant_id
+		where t.slug = $1 and fl.slug = $2 and fl.status = 'active'
+	`, handle, slug).Scan(
+		&link.ID,
+		&link.TenantID,
+		&link.LocationID,
+		&link.CampaignID,
+		&link.Name,
+		&link.Token,
+		&link.Slug,
+		&link.Status,
+		&link.Channel,
+		&link.QRAssetURL,
+		&link.QRSVG,
+		&link.Destination,
+		&link.CreatedAt,
+	)
+	if err == nil {
+		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
+	}
+	return link, err
+}
+
+func (s *Store) publicSurveyForLink(ctx context.Context, link FeedbackLink) (PublicSurvey, error) {
 	if link.CampaignID == "" {
 		return PublicSurvey{}, errors.New("feedback link is not attached to a survey campaign")
 	}
@@ -606,6 +709,9 @@ func (s *Store) GetPublicSurvey(ctx context.Context, token string) (PublicSurvey
 }
 
 func (s *Store) CreateFeedbackSession(ctx context.Context, req createFeedbackSessionRequest) (FeedbackSession, error) {
+	if err := validateFeedbackSessionInput(req); err != nil {
+		return FeedbackSession{}, err
+	}
 	link, err := s.ResolveFeedbackLink(ctx, req.Token)
 	if err != nil {
 		return FeedbackSession{}, err
@@ -627,10 +733,6 @@ func (s *Store) CreateFeedbackSession(ctx context.Context, req createFeedbackSes
 		MarketingConsent: req.MarketingConsent,
 		Metadata:         defaultMetadata(req.Metadata),
 	}
-	if err := validateContactDetails(session.GuestEmail, session.GuestPhone, false); err != nil {
-		return FeedbackSession{}, err
-	}
-
 	metadata, err := json.Marshal(session.Metadata)
 	if err != nil {
 		return FeedbackSession{}, err
@@ -652,8 +754,8 @@ func (s *Store) CreateFeedbackSession(ctx context.Context, req createFeedbackSes
 }
 
 func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (FeedbackResponse, error) {
-	if req.Rating < 1 || req.Rating > 5 {
-		return FeedbackResponse{}, errors.New("rating must be between 1 and 5")
+	if err := validateSubmitFeedbackInput(req); err != nil {
+		return FeedbackResponse{}, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -715,6 +817,10 @@ func (s *Store) SubmitFeedback(ctx context.Context, req submitFeedbackRequest) (
 	categories := req.Categories
 	if categories == nil {
 		categories = []string{}
+	} else {
+		for index := range categories {
+			categories[index] = strings.TrimSpace(categories[index])
+		}
 	}
 
 	response := FeedbackResponse{
@@ -1101,7 +1207,7 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 			if commitErr := tx.Commit(ctx); commitErr != nil {
 				return false, commitErr
 			}
-			return true, nil
+			return true, err
 		}
 		if _, err := tx.Exec(ctx, `
 			update outbox_events set status = 'processed', processed_at = now(), last_error = '' where id = $1
@@ -1125,7 +1231,7 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return false, commitErr
 		}
-		return true, nil
+		return true, err
 	}
 
 	response, err := s.GetFeedbackResponse(ctx, event.TenantID, event.FeedbackResponseID)
@@ -1170,6 +1276,40 @@ func (s *Store) ProcessNextOutboxEvent(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Store) RequeueFailedOutboxEvent(ctx context.Context, tenantID, eventID, actorID, actorRole string) (OutboxRequeueResult, error) {
+	if _, err := uuid.Parse(tenantID); err != nil {
+		return OutboxRequeueResult{}, validationError("tenant context is invalid")
+	}
+	if _, err := uuid.Parse(eventID); err != nil {
+		return OutboxRequeueResult{}, validationError("outbox event ID is invalid")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return OutboxRequeueResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	result := OutboxRequeueResult{}
+	err = tx.QueryRow(ctx, `
+		update outbox_events
+		set status = 'pending', attempts = 0, last_error = '', available_at = now(), processed_at = null
+		where id = $1 and tenant_id = $2 and status = 'failed'
+		returning id::text, tenant_id::text, status, attempts
+	`, eventID, tenantID).Scan(&result.EventID, &result.TenantID, &result.Status, &result.Attempts)
+	if err != nil {
+		return OutboxRequeueResult{}, err
+	}
+	if err := s.writeAudit(ctx, tx, tenantID, actorID, actorRole, "outbox_event.requeued", "outbox_event", eventID, map[string]any{
+		"status": "pending",
+	}); err != nil {
+		return OutboxRequeueResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OutboxRequeueResult{}, err
+	}
+	return result, nil
 }
 
 func (s *Store) writeAudit(ctx context.Context, tx pgx.Tx, tenantID, actorID, actorRole, action, resourceType, resourceID string, details map[string]any) error {
@@ -1242,6 +1382,8 @@ func scanSurveyCampaign(row surveyCampaignScanner) (SurveyCampaign, error) {
 		&campaign.SMSPhone,
 		&campaign.GoogleReviewURL,
 		&campaign.YelpReviewURL,
+		&campaign.LogoURL,
+		&campaign.Theme,
 		&campaign.Status,
 		&campaign.CreatedAt,
 	)
@@ -1260,4 +1402,46 @@ func slugify(explicit, fallback string) string {
 		source = fmt.Sprintf("item-%s", strings.ToLower(uuid.NewString()[:8]))
 	}
 	return source
+}
+
+func optionalSlug(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return slugify(value, "")
+}
+
+// claimTenantHandle reserves a clean, heard-unique handle for a tenant. It
+// tries the slugified restaurant name first and falls back to suffixed
+// variants (nom, nom-2, nom-3, ...) until an unused one is found. The insert
+// uses on conflict do nothing so concurrent claims of the same handle resolve
+// atomically against the tenants.slug unique constraint; if the tenant row
+// already exists (a retry), the stored handle is kept.
+func claimTenantHandle(ctx context.Context, tx pgx.Tx, tenantID, name string) (string, error) {
+	base := slugify("", name)
+	candidate := base
+	for attempt := 0; attempt < 50; attempt++ {
+		if attempt > 0 {
+			candidate = fmt.Sprintf("%s-%d", base, attempt+1)
+		}
+		result, err := tx.Exec(ctx, `
+			insert into tenants (id, name, slug) values ($1, $2, $3)
+			on conflict do nothing
+		`, tenantID, name, candidate)
+		if err != nil {
+			return "", err
+		}
+		if result.RowsAffected() == 1 {
+			return candidate, nil
+		}
+		var stored string
+		err = tx.QueryRow(ctx, `select slug from tenants where id = $1`, tenantID).Scan(&stored)
+		if err == nil {
+			return stored, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+	}
+	return base, nil
 }

@@ -60,15 +60,15 @@ func newPassageJWKSProvider(cfg Config, client *http.Client, now func() time.Tim
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return nil, errors.New("PASSAGE_BASE_URL must be an absolute URL")
 	}
-	if cfg.AppEnv == "production" && base.Scheme != "https" {
-		return nil, errors.New("PASSAGE_BASE_URL must use https in production")
+	if cfg.IsProductionLike() && base.Scheme != "https" {
+		return nil, errors.New("PASSAGE_BASE_URL must use https in staging and production")
 	}
 	issuerURL, issuerErr := url.Parse(cfg.PassageIssuer)
 	if issuerErr != nil || issuerURL.Scheme == "" || issuerURL.Host == "" {
 		return nil, errors.New("PASSAGE_ISSUER must be an absolute URL")
 	}
-	if cfg.AppEnv == "production" && issuerURL.Scheme != "https" {
-		return nil, errors.New("PASSAGE_ISSUER must use https in production")
+	if cfg.IsProductionLike() && issuerURL.Scheme != "https" {
+		return nil, errors.New("PASSAGE_ISSUER must use https in staging and production")
 	}
 	base.Path = "/.well-known/jwks.json"
 	base.RawQuery = ""
@@ -76,7 +76,7 @@ func newPassageJWKSProvider(cfg Config, client *http.Client, now func() time.Tim
 	if client == nil {
 		trustedHost := base.Host
 		client = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 || req.URL.Host != trustedHost || (cfg.AppEnv == "production" && req.URL.Scheme != "https") {
+			if len(via) >= 3 || req.URL.Host != trustedHost || (cfg.IsProductionLike() && req.URL.Scheme != "https") {
 				return errors.New("untrusted Passage JWKS redirect")
 			}
 			return nil
@@ -106,11 +106,17 @@ func (p *passageJWKSProvider) VerifyToken(ctx context.Context, token string) (Id
 	}
 	key, err := p.key(ctx, h.KeyID, false)
 	if err != nil {
+		if errors.Is(err, errIdentityUnavailable) {
+			return Identity{}, err
+		}
 		return Identity{}, errInvalidToken
 	}
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil || !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]), sig) {
 		key, err = p.key(ctx, h.KeyID, true)
+		if errors.Is(err, errIdentityUnavailable) {
+			return Identity{}, err
+		}
 		if err != nil || !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]), sig) {
 			return Identity{}, errInvalidToken
 		}
@@ -164,7 +170,9 @@ func selectHeardRole(roles []string) (string, bool) {
 }
 func heardPermissions(role string) []string {
 	switch role {
-	case "owner", "admin":
+	case "owner":
+		return []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"}
+	case "admin":
 		return []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"}
 	case "manager":
 		return []string{"tenant:read", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"}
@@ -187,7 +195,7 @@ func (p *passageJWKSProvider) key(ctx context.Context, kid string, force bool) (
 		if ok && fresh {
 			return key, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", errIdentityUnavailable, err)
 	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()

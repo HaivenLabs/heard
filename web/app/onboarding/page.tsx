@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "../../components/auth-gate";
 import { apiFetch, FeedbackLink, OnboardingState, Session, SurveyCampaign } from "../../lib/api";
+import { slugify } from "../../lib/slug";
 
 export default function OnboardingPage() {
   return <AuthGate>{(session) => <Onboarding session={session} />}</AuthGate>;
@@ -78,8 +79,8 @@ function Onboarding({ session }: { session: Session }) {
           incentive_text: "",
           sms_keyword: "",
           sms_phone: "",
-          google_review_url: "",
-          yelp_review_url: ""
+          google_review_url: "https://maps.app.goo.gl/D3cEeXBEtGaKF2Lz8",
+          yelp_review_url: "https://www.yelp.com/biz/nom-san-juan-capistrano"
         }
       });
       setState({ ...state, campaign, next_step: "feedback_link" });
@@ -104,7 +105,8 @@ function Onboarding({ session }: { session: Session }) {
           location_id: current.location.id,
           campaign_id: campaign.id,
           name: `${campaign.name} link`,
-          channel: "onboarding"
+          channel: "onboarding",
+          slug: slugify(current.location.name)
         }
       });
       setState({ ...current, campaign, feedback_link: feedbackLink, status: "complete", next_step: "complete" });
@@ -166,7 +168,7 @@ function Onboarding({ session }: { session: Session }) {
                 <h2 className="mt-3 font-display text-3xl tracking-[-0.04em]">Give your first campaign a headline.</h2>
                 <p className="mt-3 font-body text-sm leading-6 text-ink/55">We&apos;ve filled in the rest with a short, proven guest experience. Everything stays editable later.</p>
                 <div className="mt-7"><Field defaultValue="How did we do?" label="Guest-facing headline" name="headline" placeholder="How did we do?" /></div>
-                <div className="mt-5 rounded-2xl bg-[#f5efe6] p-5 font-body text-sm leading-6 text-ink/58"><strong className="text-ink">{state.tenant?.name}</strong><br />{state.location?.name} · Five-face feedback survey</div>
+                <div className="mt-5 rounded-2xl bg-[#f5efe6] p-5 font-body text-sm leading-6 text-ink/58"><strong className="text-ink">{state.tenant?.name}</strong><br />{state.location?.name} · Five-face feedback survey<br /><span className="text-xs text-ink/48">Your heard handle: /f/{state.tenant?.slug ?? "your-restaurant"}/</span></div>
                 <button className="mt-7 h-14 w-full rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:bg-[#b95635] disabled:opacity-60" disabled={busy} type="submit">{busy ? "Creating your campaign..." : "Create feedback campaign"}</button>
               </form>
             ) : null}
@@ -184,9 +186,9 @@ function Onboarding({ session }: { session: Session }) {
               <div>
                 <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-olive">Your campaign is live</p>
                 <h2 className="mt-3 font-display text-3xl tracking-[-0.04em]">Ready for your first honest answer.</h2>
-                <p className="mt-3 font-body text-sm leading-6 text-ink/55">Share this link now. If qurl is unavailable, the guest link still works and you can generate the QR asset later.</p>
+                <p className="mt-3 font-body text-sm leading-6 text-ink/55">Share this link now. If qurl is unavailable, the guest link still works and you can generate the QR asset later. The link prefix <code className="rounded bg-ink/5 px-1 font-mono text-clay">/f/{state.tenant?.slug ?? "your-restaurant"}/</code> is unique to your restaurant.</p>
                 <a className="mt-6 block break-all rounded-2xl bg-[#eef4ff] px-4 py-4 font-body text-sm font-semibold text-[#175cd3]" href={state.feedback_link.destination_url} rel="noreferrer" target="_blank">{state.feedback_link.destination_url}</a>
-                {!state.feedback_link.qr_asset_url && !state.feedback_link.qr_svg ? <p className="mt-3 rounded-2xl bg-[#fff7ed] px-4 py-3 font-body text-sm text-[#9a3412]">Your link is ready. QR generation is temporarily unavailable.</p> : null}
+                {!state.feedback_link.qr_asset_url ? <p className="mt-3 rounded-2xl bg-[#fff7ed] px-4 py-3 font-body text-sm text-[#9a3412]">Your link is ready. QR generation is temporarily unavailable.</p> : null}
                 <div className="mt-6 flex flex-wrap gap-3">
                   <button className="rounded-full bg-clay px-6 py-3 font-body text-sm font-semibold text-white" onClick={() => void copyLink()} type="button">{copied ? "Link copied" : "Copy feedback link"}</button>
                   <Link className="rounded-full border border-ink/15 px-6 py-3 font-body text-sm font-semibold" href="/admin">Open workspace</Link>
@@ -207,4 +209,3 @@ function Progress({ done, number, text }: { done: boolean; number: string; text:
 function Field({ defaultValue, label, name, placeholder }: { defaultValue?: string; label: string; name: string; placeholder: string }) {
   return <label className="block"><span className="mb-2 block font-body text-sm font-semibold">{label}</span><input className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" defaultValue={defaultValue} name={name} placeholder={placeholder} required /></label>;
 }
-

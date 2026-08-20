@@ -4,7 +4,7 @@
 
 Slice 6 implements the complete local/self-hostable product workflow and the production Passage identity boundary: account context resolution, idempotent restaurant and first-location activation, resumable first-campaign creation, feedback-link handoff, qurl degradation, primary public calls to action, audit coverage, and the `restaurant-workspace-activated` outbox event.
 
-In production, Heard verifies Passage-issued EdDSA product tokens against Passage JWKS and requires the configured issuer, the `heard` audience and product grant, an unexpired token, UUID subject and organization claims, and a recognized organization role. Heard derives tenant context and product permissions only from those verified claims. The local registration endpoint remains explicitly non-production.
+In staging and production, Heard verifies Passage-issued EdDSA product tokens against Passage JWKS and requires the configured issuer, the `heard` audience and product grant, an unexpired token, UUID subject and organization claims, and a recognized organization role. Heard derives tenant context and product permissions only from those verified claims. The local registration endpoint is available only in explicit local runtimes with loopback origins.
 
 ## Goal
 
@@ -45,7 +45,7 @@ The OpenAPI contract must be updated before implementation. The minimum heard-ow
 - Return explicit onboarding state and the next incomplete step.
 - Reuse the existing campaign APIs rather than creating a separate onboarding-only campaign model.
 
-The production exchange follows Passage's published short-lived product-token and JWKS contract. The local fake continues to exercise onboarding through `POST /api/v1/auth/local/registration` and remains impossible to enable in production.
+The production exchange follows Passage's published short-lived product-token and JWKS contract. The local fake continues to exercise onboarding through `POST /api/v1/auth/local/registration` and remains impossible to enable outside an explicit local runtime with loopback origins.
 
 ## Data model
 
@@ -110,3 +110,7 @@ Activation state and outbox records must be committed atomically where downstrea
 - `haiven check` passes.
 
 Passage hosts registration, browser sessions, verification, recovery, organization membership, and product grants. Heard accepts only Passage's short-lived `aud=heard` product token at its API boundary; signing-key rotation is handled by bounded JWKS caching and forced refresh after signature/key mismatch.
+
+The browser crosses domains through a PKCE-bound one-time authorization code. Passage validates an exact registered callback URI and returns only `code` plus opaque `state`; Heard validates state, exchanges the code server-side, verifies the product token, and stores it in an HttpOnly SameSite=Lax cookie. The code expires after two minutes and is atomically single-use. Neither product tokens nor PKCE verifiers appear in browser URLs or JavaScript storage.
+
+Browser and service origins are configured separately: `PASSAGE_PUBLIC_URL` builds the browser authorize redirect and must be the same public origin that owns the Passage session cookie; `PASSAGE_BASE_URL` is used only for backend token exchange and JWKS. The public URL falls back to the base URL when omitted.

@@ -35,10 +35,10 @@ export type FeedbackLink = {
   campaign_id?: string;
   name: string;
   token: string;
+  slug?: string;
   status: string;
   channel: string;
   qr_asset_url: string;
-  qr_svg?: string;
   destination_url: string;
   created_at: string;
 };
@@ -56,6 +56,8 @@ export type SurveyCampaign = {
   sms_phone: string;
   google_review_url: string;
   yelp_review_url: string;
+  logo_url?: string;
+  theme?: string;
   status: string;
   created_at: string;
 };
@@ -150,12 +152,11 @@ export type OnboardingState = {
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const PASSAGE_HOSTED_URL = process.env.NEXT_PUBLIC_PASSAGE_HOSTED_URL ?? "";
 export const DEMO_TENANT_ID = process.env.NEXT_PUBLIC_DEMO_TENANT_ID ?? "11111111-1111-1111-1111-111111111111";
 
-/** Local bearer sessions are intentionally unavailable in production. */
+/** Local bearer sessions are enabled only by an explicit local runtime label. */
 export function isProductionAuth(): boolean {
-  return process.env.NEXT_PUBLIC_APP_ENV === "production" || process.env.NODE_ENV === "production";
+  return !["local", "docker", "test"].includes(process.env.NEXT_PUBLIC_APP_ENV ?? "");
 }
 
 export function safeReturnTo(value: string | null | undefined, fallback = "/admin"): string {
@@ -163,24 +164,12 @@ export function safeReturnTo(value: string | null | undefined, fallback = "/admi
   return value;
 }
 
-export function passageHostedUrl(action: "login" | "signup", returnTo: string): string {
-  if (!PASSAGE_HOSTED_URL) {
-    throw new Error("Passage account setup is not configured yet. Please try again shortly.");
-  }
-  let base: URL;
-  try {
-    base = new URL(PASSAGE_HOSTED_URL);
-  } catch {
-    throw new Error("Passage account setup is not configured correctly.");
-  }
-  if (base.protocol !== "https:" && base.protocol !== "http:") {
-    throw new Error("Passage account setup is not configured correctly.");
-  }
-  const path = action === "signup" ? "/signup" : "/login";
-  const target = new URL(path, base);
-  target.searchParams.set("product", "heard");
-  target.searchParams.set("return_to", safeReturnTo(returnTo));
-  return target.toString();
+export function identityAuthStartUrl(returnTo: string, options?: { intent?: "register" | "login"; email?: string }): string {
+  const params = new URLSearchParams();
+  params.set("return_to", safeReturnTo(returnTo, "/admin"));
+  if (options?.intent) params.set("intent", options.intent);
+  if (options?.email) params.set("email", options.email);
+  return `/api/v1/auth/start?${params.toString()}`;
 }
 
 type RequestOptions = {
@@ -203,7 +192,7 @@ export function getStoredSession(): Session | null {
   }
   try {
     const session = JSON.parse(raw) as Session;
-    if (!session.access_token || new Date(session.expires_at).getTime() <= Date.now()) {
+    if (!session.access_token || new Date(session.expires_at).getTime() <= Date.now() || (isProductionAuth() && session.identity.provider === "passage-local")) {
       clearStoredSession();
       return null;
     }
@@ -215,6 +204,7 @@ export function getStoredSession(): Session | null {
 }
 
 export function storeSession(session: Session) {
+  if (isProductionAuth()) return;
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
 }
 
@@ -251,6 +241,16 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function resolveSession(): Promise<Session | null> {
+  if (!isProductionAuth()) return getStoredSession();
+  try {
+    const identity = await apiFetch<Identity>("/api/v1/session", { auth: false });
+    return { access_token: "", expires_at: "", identity, tenant_id: identity.tenant_ids[0] ?? "" };
+  } catch {
+    return null;
+  }
 }
 
 export async function createLocalSession(email: string): Promise<Session> {

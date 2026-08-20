@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	errUnauthenticated = errors.New("authentication required")
-	errInvalidToken    = errors.New("invalid access token")
+	errUnauthenticated     = errors.New("authentication required")
+	errInvalidToken        = errors.New("invalid access token")
+	errIdentityUnavailable = errors.New("identity provider unavailable")
 )
 
 type Identity struct {
@@ -68,12 +69,17 @@ type localRegistrationIssuer interface {
 }
 
 func NewIdentityProvider(cfg Config) (IdentityProvider, error) {
+	switch cfg.AppEnv {
+	case "local", "docker", "test", "staging", "production":
+	default:
+		return nil, fmt.Errorf("identity provider refused unknown APP_ENV %q", cfg.AppEnv)
+	}
 	switch cfg.PassageMode {
 	case "jwks":
 		return newPassageJWKSProvider(cfg, nil, time.Now)
 	case "local":
-		if cfg.AppEnv == "production" {
-			return nil, errors.New("local Passage adapter cannot run in production")
+		if !cfg.IsLocalRuntime() {
+			return nil, errors.New("local Passage adapter cannot run outside a local runtime")
 		}
 		if len(cfg.LocalPassageSecret) < 12 {
 			return nil, errors.New("LOCAL_PASSAGE_SECRET must be at least 12 characters")
@@ -131,7 +137,7 @@ func (p *localPassageProvider) issueSession(rawEmail, tenantID string) (Session,
 		DisplayName: displayNameFromEmail(email),
 		Role:        "owner",
 		TenantIDs:   []string{tenantID},
-		Permissions: []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"},
+		Permissions: []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"},
 		Provider:    "passage-local",
 	}
 	claims := localPassageClaims{

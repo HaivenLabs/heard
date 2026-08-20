@@ -45,6 +45,8 @@ type SurveyCampaign struct {
 	SMSPhone        string    `json:"sms_phone"`
 	GoogleReviewURL string    `json:"google_review_url"`
 	YelpReviewURL   string    `json:"yelp_review_url"`
+	LogoURL         string    `json:"logo_url"`
+	Theme           string    `json:"theme"`
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -56,10 +58,11 @@ type FeedbackLink struct {
 	CampaignID  string    `json:"campaign_id,omitempty"`
 	Name        string    `json:"name"`
 	Token       string    `json:"token"`
+	Slug        string    `json:"slug,omitempty"`
 	Status      string    `json:"status"`
 	Channel     string    `json:"channel"`
 	QRAssetURL  string    `json:"qr_asset_url"`
-	QRSVG       string    `json:"qr_svg,omitempty"`
+	QRSVG       string    `json:"-"`
 	Destination string    `json:"destination_url"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -181,4 +184,11 @@ type FeedbackSubmittedEvent struct {
 	Sentiment          string    `json:"sentiment"`
 	Rating             int       `json:"rating"`
 	OccurredAt         time.Time `json:"occurred_at"`
+}
+
+type OutboxRequeueResult struct {
+	EventID  string `json:"event_id"`
+	TenantID string `json:"tenant_id"`
+	Status   string `json:"status"`
+	Attempts int    `json:"attempts"`
 }
