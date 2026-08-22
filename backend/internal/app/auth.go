@@ -111,7 +111,12 @@ func newLocalPassageProvider(secret string, now func() time.Time) *localPassageP
 }
 
 func (p *localPassageProvider) IssueSession(rawEmail string) (Session, error) {
-	return p.issueSession(rawEmail, demoTenantID)
+	email := strings.ToLower(strings.TrimSpace(rawEmail))
+	if email == "" || !strings.Contains(email, "@") {
+		return Session{}, errors.New("a valid email is required")
+	}
+	tenantID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("local-passage-workspace:"+email)).String()
+	return p.issueSession(email, tenantID)
 }
 
 func (p *localPassageProvider) IssueRegistration(rawEmail string) (Session, error) {

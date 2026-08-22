@@ -7,17 +7,17 @@ import { apiFetch, FeedbackLink, Location, Session, SurveyCampaign } from "../..
 import { slugify } from "../../../lib/slug";
 
 const defaultCampaign = {
-  name: "Takeout bag gift card survey",
-  restaurantName: "nom",
+  name: "Guest feedback campaign",
+  restaurantName: "",
   headline: "How did we do?",
   prompt: "Tap the face that matches your visit.",
-  incentive: "Complete this survey for a chance to win a $100 nom gift card.",
-  smsKeyword: "WIN",
-  smsPhone: "(877) 426-0492",
-  googleReviewURL: "https://maps.app.goo.gl/D3cEeXBEtGaKF2Lz8",
-  yelpReviewURL: "https://www.yelp.com/biz/nom-san-juan-capistrano",
-  logoURL: "/brands/nom/logo.png",
-  pathSlug: "sjc/takeout"
+  incentive: "",
+  smsKeyword: "",
+  smsPhone: "",
+  googleReviewURL: "",
+  yelpReviewURL: "",
+  logoURL: "",
+  pathSlug: "feedback"
 };
 
 export default function CampaignBuilderPage() {
@@ -54,7 +54,10 @@ function CampaignBuilder({ session }: { session: Session }) {
   useEffect(() => {
     if (!tenantId) return;
     void apiFetch<{ id: string; name: string; slug: string }>(`/api/v1/tenants/${tenantId}`, { tenantId })
-      .then((tenant) => setTenantSlug(tenant.slug))
+      .then((tenant) => {
+        setTenantSlug(tenant.slug);
+        setFormData((previous) => ({ ...previous, restaurant_name: previous.restaurant_name || tenant.name }));
+      })
       .catch(() => {});
   }, [tenantId]);
 
@@ -142,7 +145,7 @@ function CampaignBuilder({ session }: { session: Session }) {
           sms_phone: formData.sms_phone,
           google_review_url: formData.google_review_url,
           yelp_review_url: formData.yelp_review_url,
-          logo_url: formData.logo_url || "/brands/nom/logo.png"
+          logo_url: formData.logo_url
         }
       });
 

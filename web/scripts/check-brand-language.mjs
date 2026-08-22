@@ -6,11 +6,18 @@ const home = readFileSync(resolve("app/page.tsx"), "utf8");
 const walkthrough = readFileSync(resolve("app/walkthrough/walkthrough-form.tsx"), "utf8");
 const adminShell = readFileSync(resolve("components/admin-shell.tsx"), "utf8");
 const publicHeader = readFileSync(resolve("components/public-header.tsx"), "utf8");
+const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
+const start = readFileSync(resolve("app/start/page.tsx"), "utf8");
 
 for (const source of [home, walkthrough]) {
   assert.match(source, /components\/public-header/);
   assert.match(source, /components\/brand-backdrop/);
   assert.doesNotMatch(source, /<header\b/);
+}
+
+for (const source of [login, start]) {
+  assert.match(source, /components\/public-header/);
+  assert.match(source, /<PublicHeader \/>/);
 }
 
 assert.match(home, /<h1[^>]*>The guest experience, in your hands<\/h1>/);

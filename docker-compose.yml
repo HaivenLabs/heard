@@ -32,7 +32,7 @@ services:
       PUBLIC_WRITE_RATE_LIMIT: "30"
       PUBLIC_WRITE_RATE_WINDOW_SECONDS: "60"
       TRUSTED_PROXY_CIDRS: ""
-      PASSAGE_MODE: ${PASSAGE_MODE:-local}
+      PASSAGE_MODE: ${PASSAGE_MODE:-jwks}
       LOCAL_PASSAGE_SECRET: heard-docker-local-only-secret
       PASSAGE_BASE_URL: ${PASSAGE_BASE_URL:-http://host.docker.internal:8081}
       PASSAGE_PUBLIC_URL: ${PASSAGE_PUBLIC_URL:-http://localhost:3020}
@@ -65,12 +65,15 @@ services:
 
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       args:
         NEXT_PUBLIC_APP_ENV: docker
+        NEXT_PUBLIC_PASSAGE_MODE: ${PASSAGE_MODE:-jwks}
     environment:
       API_INTERNAL_BASE_URL: http://api:8080
       NEXT_PUBLIC_APP_ENV: docker
+      NEXT_PUBLIC_PASSAGE_MODE: ${PASSAGE_MODE:-jwks}
       NEXT_PUBLIC_DEMO_TENANT_ID: 11111111-1111-1111-1111-111111111111
     depends_on:
       - api

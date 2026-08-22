@@ -145,6 +145,52 @@ Heard should stay focused on restaurant guest experience workflows and avoid bec
 
 ---
 
+## Product: Compass
+
+Repo: `haiven` (`packages/compass`)
+
+Status: active
+
+Purpose:
+
+Compass is the open-source Haiven builder platform: reusable standards, design
+contracts, agent skills, templates, and checks built for everyone and consumed
+first by Haiven products.
+
+Compass owns:
+
+- Constitution and shared-document synchronization
+- product-repository initialization and diagnosis
+- opt-in agent adapter and Haiven skill distribution
+- design-system installation and compatibility checks
+- product marketing manifest and federation validation
+- reusable product and marketing templates
+- fleet-wide standards and upgrade checks
+
+Compass does not own:
+
+- product-specific business workflows
+- Passage identity behavior
+- qurl QR rendering
+- Heard restaurant workflows
+- product-specific visual personality or customer-facing copy
+- hosted build or deployment providers
+
+Products that should use Compass:
+
+- qurl
+- Heard
+- Passage
+- every future Haiven product
+
+Rule:
+
+Compass may encode and enforce Haiven standards, but shared packages and source
+documents remain the executable or documentary source of truth. Agent skills
+must guide products to those sources rather than duplicate them.
+
+---
+
 ## Adding a product
 
 A new Haiven product must document:

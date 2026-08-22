@@ -3,25 +3,43 @@
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { ReactNode, useEffect, useState } from "react";
-import { resolveSession, Session } from "../lib/api";
+import { apiFetch, OnboardingState, resolveSession, Session } from "../lib/api";
 
-export function AuthGate({ children }: { children: (session: Session) => ReactNode }) {
+export function AuthGate({ children, requireOnboardingComplete = false }: { children: (session: Session) => ReactNode; requireOnboardingComplete?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
-    void resolveSession().then((current) => {
+    void resolveSession().then(async (current) => {
       if (!active) return;
-      setSession(current);
       if (!current) {
         const requested = `${pathname}${window.location.search}`;
         router.replace(`/login?next=${encodeURIComponent(requested)}` as Route);
+        setSession(null);
+        return;
       }
+      if (requireOnboardingComplete) {
+        try {
+          const onboarding = await apiFetch<OnboardingState>("/api/v1/onboarding");
+          if (!active) return;
+          if (onboarding.status !== "complete") {
+            router.replace("/onboarding" as Route);
+            setSession(null);
+            return;
+          }
+        } catch {
+          if (!active) return;
+          router.replace("/onboarding" as Route);
+          setSession(null);
+          return;
+        }
+      }
+      setSession(current);
     });
     return () => { active = false; };
-  }, [pathname, router]);
+  }, [pathname, requireOnboardingComplete, router]);
 
   if (!session) {
     return (

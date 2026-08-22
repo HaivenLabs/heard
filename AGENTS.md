@@ -29,7 +29,8 @@ Non-negotiable rules:
 - Build vertical slices, not disconnected scaffolding.
 - Use Passage for shared auth/identity.
 - Use qurl for QR generation.
-- Do not bypass tenant, role, permission, or security boundaries.
+- Do not bypass tenant, role, permission, security, or software supply-chain boundaries.
+- Preserve pinned package managers and lockfiles, deny unreviewed install scripts, pin CI actions to full SHAs, and keep untrusted code away from credentials.
 - Do not ship developer-demo UI for production surfaces.
 - Update durable docs when product, architecture, UX, or quality rules change.
 

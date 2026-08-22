@@ -154,9 +154,9 @@ export type OnboardingState = {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 export const DEMO_TENANT_ID = process.env.NEXT_PUBLIC_DEMO_TENANT_ID ?? "11111111-1111-1111-1111-111111111111";
 
-/** Local bearer sessions are enabled only by an explicit local runtime label. */
+/** Local bearer sessions require an explicit auth-mode opt-in, never merely a local runtime label. */
 export function isProductionAuth(): boolean {
-  return !["local", "docker", "test"].includes(process.env.NEXT_PUBLIC_APP_ENV ?? "");
+  return process.env.NEXT_PUBLIC_PASSAGE_MODE !== "local";
 }
 
 export function safeReturnTo(value: string | null | undefined, fallback = "/admin"): string {
@@ -164,12 +164,27 @@ export function safeReturnTo(value: string | null | undefined, fallback = "/admi
   return value;
 }
 
-export function identityAuthStartUrl(returnTo: string, options?: { intent?: "register" | "login"; email?: string }): string {
+export function identityAuthStartUrl(returnTo: string, options?: { intent?: "register" | "login"; email?: string; provider?: "google"; organizationName?: string; locationName?: string; source?: string }): string {
   const params = new URLSearchParams();
   params.set("return_to", safeReturnTo(returnTo, "/admin"));
   if (options?.intent) params.set("intent", options.intent);
   if (options?.email) params.set("email", options.email);
+  if (options?.provider) params.set("provider", options.provider);
+  if (options?.organizationName) params.set("organization_name", options.organizationName);
+  if (options?.locationName) params.set("location_name", options.locationName);
+  if (options?.source) params.set("source", options.source);
   return `/api/v1/auth/start?${params.toString()}`;
+}
+
+export async function availableIdentityProviders(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/providers`, { cache: "no-store", credentials: "include" });
+    if (!response.ok) return [];
+    const payload = await response.json() as { providers?: string[] };
+    return Array.isArray(payload.providers) ? payload.providers : [];
+  } catch {
+    return [];
+  }
 }
 
 type RequestOptions = {

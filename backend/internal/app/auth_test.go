@@ -26,11 +26,26 @@ func TestLocalPassageIssuesAndVerifiesSession(t *testing.T) {
 	if identity.Email != "owner@northstar.test" {
 		t.Fatalf("got email %q", identity.Email)
 	}
-	if !identity.HasTenant(demoTenantID) {
-		t.Fatalf("expected identity to belong to demo tenant")
+	if identity.HasTenant(demoTenantID) || session.TenantID == demoTenantID {
+		t.Fatalf("arbitrary local sign-in inherited the demo tenant")
 	}
 	if !identity.HasPermission("campaign:write") {
 		t.Fatalf("expected campaign:write permission")
+	}
+}
+
+func TestLocalPassageEmailsCannotShareWorkspaceContext(t *testing.T) {
+	provider := newLocalPassageProvider("test-secret", time.Now)
+	first, err := provider.IssueSession("first@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := provider.IssueSession("second@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.TenantID == second.TenantID || first.Identity.UserID == second.Identity.UserID {
+		t.Fatal("different emails shared a local user or tenant context")
 	}
 }
 

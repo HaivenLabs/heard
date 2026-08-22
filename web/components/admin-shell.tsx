@@ -3,8 +3,8 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode } from "react";
-import { clearStoredSession, Session } from "../lib/api";
+import { ReactNode, useEffect, useState } from "react";
+import { apiFetch, clearStoredSession, Session, Tenant } from "../lib/api";
 import { BrandBackdrop } from "./brand-backdrop";
 
 const navigation: Array<{ href: Route; label: string }> = [
@@ -16,6 +16,14 @@ const navigation: Array<{ href: Route; label: string }> = [
 export function AdminShell({ children, session }: { children: ReactNode; session: Session }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [workspaceName, setWorkspaceName] = useState("Your workspace");
+
+  useEffect(() => {
+    if (!session.tenant_id) return;
+    void apiFetch<Tenant>(`/api/v1/tenants/${session.tenant_id}`, { tenantId: session.tenant_id })
+      .then((tenant) => setWorkspaceName(tenant.name))
+      .catch(() => setWorkspaceName("Your workspace"));
+  }, [session.tenant_id]);
 
   async function signOut() {
     clearStoredSession();
@@ -50,7 +58,7 @@ export function AdminShell({ children, session }: { children: ReactNode; session
           <div className="flex items-center gap-3">
             <div className="hidden text-right md:block">
               <p className="font-body text-sm font-semibold">{session.identity.display_name}</p>
-              <p className="font-body text-xs capitalize text-ink/45">{session.identity.role} · North Star Noodles</p>
+              <p className="font-body text-xs capitalize text-ink/45">{session.identity.role} · {workspaceName}</p>
             </div>
             <button className="rounded-full border border-ink/15 px-4 py-2 font-body text-sm text-ink/65 transition hover:border-clay hover:text-clay" onClick={signOut} type="button">
               Sign out

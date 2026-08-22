@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAdminSession } from "../../components/admin-session";
-import { apiFetch, Location, RecoveryCase, Session, SurveyCampaign } from "../../lib/api";
+import { apiFetch, Location, RecoveryCase, Session, SurveyCampaign, Tenant } from "../../lib/api";
 
 type ConsoleData = {
   locations: Location[];
   campaigns: SurveyCampaign[];
   cases: RecoveryCase[];
+  tenant: Tenant;
 };
 
 export default function ConsolePage() {
@@ -22,11 +23,12 @@ function Console({ session }: { session: Session }) {
 
   useEffect(() => {
     Promise.all([
+      apiFetch<Tenant>(`/api/v1/tenants/${session.tenant_id}`, { tenantId: session.tenant_id }),
       apiFetch<{ items: Location[] }>("/api/v1/locations", { tenantId: session.tenant_id }),
       apiFetch<{ items: SurveyCampaign[] }>("/api/v1/survey-campaigns", { tenantId: session.tenant_id }),
       apiFetch<{ items: RecoveryCase[] }>("/api/v1/recovery-cases", { tenantId: session.tenant_id })
     ])
-      .then(([locations, campaigns, cases]) => setData({ locations: locations.items, campaigns: campaigns.items, cases: cases.items }))
+      .then(([tenant, locations, campaigns, cases]) => setData({ tenant, locations: locations.items, campaigns: campaigns.items, cases: cases.items }))
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load your workspace"));
   }, [session.tenant_id]);
 
@@ -36,7 +38,7 @@ function Console({ session }: { session: Session }) {
     <main className="mx-auto max-w-7xl px-5 py-10 sm:py-14">
         <div className="grid items-end gap-8 lg:grid-cols-[1fr_auto]">
           <div>
-            <p className="font-body text-xs uppercase tracking-[0.28em] text-clay">North Star Noodles · Free</p>
+            <p className="font-body text-xs uppercase tracking-[0.28em] text-clay">{data?.tenant.name ?? "Your workspace"} · Free</p>
             <h1 className="mt-4 max-w-3xl font-display text-4xl tracking-[-0.05em] sm:text-6xl">
               Good evening, {session.identity.display_name.split(" ")[0]}.
             </h1>

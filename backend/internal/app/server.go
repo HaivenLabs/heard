@@ -165,6 +165,7 @@ func (s *Server) Router() http.Handler {
 		mux.HandleFunc("POST /api/v1/auth/local/registration", s.handleCreateLocalRegistration)
 	}
 	mux.HandleFunc("GET /api/v1/auth/start", s.handlePassageStart)
+	mux.HandleFunc("GET /api/v1/auth/providers", s.handleIdentityProviders)
 	mux.HandleFunc("GET /api/v1/auth/callback", s.handlePassageCallback)
 	mux.HandleFunc("GET /api/v1/session", s.withIdentity("", s.handleGetSession))
 	mux.HandleFunc("GET /api/v1/onboarding", s.withIdentity("", s.handleGetOnboarding))
@@ -364,6 +365,18 @@ func (s *Server) handleCreateLocalRegistration(w http.ResponseWriter, r *http.Re
 
 func (s *Server) handlePassageStart(w http.ResponseWriter, r *http.Request) {
 	returnTo := safeReturnPath(r.URL.Query().Get("return_to"))
+	provider := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("provider")))
+	if provider != "" && provider != "google" {
+		writeError(w, http.StatusBadRequest, "sign-in method is unavailable")
+		return
+	}
+	intent := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("intent")))
+	organizationName := strings.TrimSpace(r.URL.Query().Get("organization_name"))
+	locationName := strings.TrimSpace(r.URL.Query().Get("location_name"))
+	if intent == "register" && (organizationName == "" || locationName == "" || len(organizationName) > 120 || len(locationName) > 120) {
+		writeError(w, http.StatusBadRequest, "restaurant and first location are required")
+		return
+	}
 	state := handoffRandom(24)
 	verifier := handoffRandom(48)
 	sum := sha256.Sum256([]byte(verifier))
@@ -371,6 +384,10 @@ func (s *Server) handlePassageStart(w http.ResponseWriter, r *http.Request) {
 	secure := s.cfg.IsProductionLike()
 	for _, cookie := range []*http.Cookie{{Name: "heard_oauth_state", Value: state, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}, {Name: "heard_oauth_verifier", Value: verifier, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}, {Name: "heard_oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte(returnTo)), Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600}} {
 		http.SetCookie(w, cookie)
+	}
+	if intent == "register" {
+		draft, _ := json.Marshal(map[string]string{"restaurant_name": organizationName, "location_name": locationName, "source": strings.TrimSpace(r.URL.Query().Get("source"))})
+		http.SetCookie(w, &http.Cookie{Name: "heard_onboarding_draft", Value: base64.RawURLEncoding.EncodeToString(draft), Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	}
 	publicURL := s.cfg.PassagePublicURL
 	if publicURL == "" {
@@ -387,16 +404,64 @@ func (s *Server) handlePassageStart(w http.ResponseWriter, r *http.Request) {
 	q.Set("state", state)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
-	intent := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("intent")))
 	if intent == "register" || intent == "login" {
 		q.Set("intent", intent)
+	}
+	if intent == "register" {
+		q.Set("organization_name", organizationName)
 	}
 	email := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("email")))
 	if email != "" && isValidEmailFormat(email) {
 		q.Set("login_hint", email)
 	}
 	authorize.RawQuery = q.Encode()
-	http.Redirect(w, r, authorize.String(), http.StatusFound)
+	destination := authorize
+	if provider != "" {
+		external, parseErr := url.Parse(strings.TrimRight(publicURL, "/") + "/api/v1/auth/external/" + provider + "/start")
+		if parseErr != nil {
+			writeError(w, http.StatusInternalServerError, "account service is not configured")
+			return
+		}
+		externalQuery := external.Query()
+		externalQuery.Set("return_to", authorize.RequestURI())
+		external.RawQuery = externalQuery.Encode()
+		destination = external
+	}
+	http.Redirect(w, r, destination.String(), http.StatusFound)
+}
+
+func (s *Server) handleIdentityProviders(w http.ResponseWriter, r *http.Request) {
+	endpoint := strings.TrimRight(s.cfg.PassageBaseURL, "/") + "/api/v1/auth/providers?client_id=" + url.QueryEscape(s.cfg.PassageClientID)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
+		return
+	}
+	resp, err := s.passageHTTP.Do(req)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
+		return
+	}
+	defer resp.Body.Close()
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if readErr != nil || resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
+		return
+	}
+	var payload struct {
+		Providers []string `json:"providers"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		writeError(w, http.StatusBadGateway, "sign-in methods are temporarily unavailable")
+		return
+	}
+	allowed := make([]string, 0, 1)
+	for _, provider := range payload.Providers {
+		if provider == "google" {
+			allowed = append(allowed, provider)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": allowed})
 }
 
 func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
@@ -438,7 +503,8 @@ func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 502, "account service returned an invalid response")
 		return
 	}
-	if _, err = s.identity.VerifyToken(r.Context(), exchanged.AccessToken); err != nil {
+	identity, err := s.identity.VerifyToken(r.Context(), exchanged.AccessToken)
+	if err != nil {
 		log.Printf("Passage handoff token verification failed")
 		writeError(w, 502, "account service returned an invalid response")
 		return
@@ -449,6 +515,19 @@ func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 		maxAge = 300
 	}
 	http.SetCookie(w, &http.Cookie{Name: "heard_session", Value: exchanged.AccessToken, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
+	if draftCookie, draftErr := r.Cookie("heard_onboarding_draft"); draftErr == nil && s.store != nil {
+		if rawDraft, decodeErr := base64.RawURLEncoding.DecodeString(draftCookie.Value); decodeErr == nil {
+			var draft map[string]string
+			if json.Unmarshal(rawDraft, &draft) == nil {
+				_, activationErr := s.store.ActivateRestaurantWorkspace(r.Context(), identity, identity.Role, "oauth-onboarding-"+identity.UserID, createOnboardingActivationRequest{RestaurantName: draft["restaurant_name"], LocationName: draft["location_name"], Source: defaultString(draft["source"], "direct")})
+				if activationErr == nil {
+					http.SetCookie(w, &http.Cookie{Name: "heard_onboarding_draft", Value: "", Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+				} else {
+					log.Printf("Heard onboarding activation failed after identity handoff: %v", activationErr)
+				}
+			}
+		}
+	}
 	for _, name := range []string{"heard_oauth_state", "heard_oauth_verifier", "heard_oauth_return"} {
 		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 	}

@@ -14,5 +14,5 @@
     },
     "plugins": {}
   },
-  "docsSource": "HAIVEN_SOURCE_DIR override"
+  "docsSource": "--source override"
 }

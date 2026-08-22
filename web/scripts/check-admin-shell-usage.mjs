@@ -6,6 +6,7 @@ const layoutSource = readFileSync(resolve("app/admin/layout.tsx"), "utf8");
 assert.match(layoutSource, /import \{ AdminShell \} from ["'][^"']*components\/admin-shell["'];/);
 assert.match(layoutSource, /import \{ AuthGate \} from ["'][^"']*components\/auth-gate["'];/);
 assert.match(layoutSource, /<AdminShell session=\{session\}>/);
+assert.match(layoutSource, /<AuthGate requireOnboardingComplete>/);
 assert.match(layoutSource, /<AdminSessionProvider session=\{session\}>/);
 
 const adminPages = [

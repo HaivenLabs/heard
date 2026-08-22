@@ -1,0 +1,12 @@
+packages:
+  - web
+
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 525600
+trustLockfile: false
+blockExoticSubdeps: true
+strictDepBuilds: true
+allowBuilds: {}

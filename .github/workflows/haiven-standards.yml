@@ -6,14 +6,35 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request' && (github.event.repository.private == false || vars.ENABLE_GITHUB_ADVANCED_SECURITY == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Reject newly introduced vulnerable dependencies
+        uses: actions/dependency-review-action@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: never
+
   haiven-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.2
       - run: corepack enable
       - run: pnpm haiven:check
 
@@ -36,8 +57,10 @@ jobs:
     env:
       HEARD_TEST_DATABASE_URL: postgres://heard:heard@localhost:5432/heard?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version: "1.26.x"
       - run: go -C backend test ./...
@@ -46,15 +69,37 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci --prefix web
-      - run: npm run --prefix web validate:contract
-      - run: npm run --prefix web test
-      - run: npm run --prefix web lint
-      - run: npm run --prefix web build
-      - run: npm audit --prefix web --omit=dev --audit-level=high
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @heard/web validate:contract
+      - run: pnpm --filter @heard/web test
+      - run: pnpm --filter @heard/web lint
+      - run: pnpm --filter @heard/web build
+      - name: Build production web container
+        run: docker build --file web/Dockerfile --tag heard-web:ci .
+      - run: mkdir -p artifacts
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: web
+          format: cyclonedx-json
+          output-file: artifacts/heard-web.cdx.json
+          upload-artifact: false
+      - name: Upload SBOM evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: heard-web-sbom-${{ github.sha }}
+          path: artifacts/heard-web.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+      # Audit the complete graph: install-time code executes before production
+      # pruning and can access CI credentials.
+      - run: pnpm audit --audit-level=high

@@ -168,6 +168,18 @@ Always enforce tenant and permission boundaries.
 
 Local bypasses must be impossible to enable in production mode.
 
+Treat software supply-chain security as part of every change. Preserve the
+repository's pinned package manager, committed lockfile, lifecycle-script
+allowlist, release-age and provenance policy, frozen CI installs, immutable
+GitHub Action pins, least-privilege permissions, dependency gates, SBOMs, and
+artifact provenance. Do not add a dependency, action, registry, install script,
+publishing token, or CI secret exposure without reviewing its trust boundary.
+
+Untrusted pull-request code must never run with secrets, write-capable tokens,
+deployment credentials, package publication credentials, or self-hosted runners.
+If a required tool cannot meet the baseline, document a narrow, owned,
+time-bounded exception and a removal date; never weaken a control silently.
+
 ---
 
 ## UX rules

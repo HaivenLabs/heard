@@ -7,7 +7,7 @@ import { AuthGate } from "../../components/auth-gate";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <AuthGate>
+    <AuthGate requireOnboardingComplete>
       {(session) => (
         <AdminSessionProvider session={session}>
           <AdminShell session={session}>{children}</AdminShell>

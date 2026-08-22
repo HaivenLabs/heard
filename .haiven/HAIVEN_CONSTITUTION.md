@@ -633,6 +633,11 @@ Definition of done:
 
 Trust is a platform requirement.
 
+Security is continuous, not a release-phase checklist. Every Haiven repository,
+dependency, build, artifact, deployment, and shared service must remain secure by
+default throughout its lifecycle. When a security control cannot make a safe
+decision, it must fail closed.
+
 Requirements:
 
 - RBAC enforcement.
@@ -647,6 +652,22 @@ Requirements:
 - Audit logging for sensitive actions.
 - Privacy retention configurable where applicable.
 - Consent records stored where applicable.
+- One supported JavaScript package manager and one committed lockfile per repository.
+- Exact runtime and package-manager versions pinned in source and CI.
+- Container base images pinned to reviewed immutable digests, with automated refresh and rescanning.
+- Frozen, integrity-checked dependency installation in CI.
+- Dependency lifecycle scripts denied by default and enabled only through a reviewed allowlist.
+- Newly published dependency versions delayed long enough for ecosystem detection and removal of common malware campaigns.
+- Package provenance and publisher-trust downgrades rejected where the package manager supports it.
+- Transitive Git, direct-tarball, and other exotic dependency sources blocked by default.
+- Runtime and development dependency graphs scanned for known vulnerabilities and malware before code executes with credentials.
+- GitHub Actions pinned to immutable full commit SHAs.
+- CI tokens explicitly least-privileged and checkout credentials not persisted.
+- Untrusted pull-request code never executes with repository, package-registry, cloud, deployment, or self-hosted-runner credentials.
+- Dependency review, static analysis, secret scanning, push protection, SBOM generation, and artifact provenance enabled where supported.
+- Package publication uses short-lived OIDC trusted publishing and provenance; long-lived registry write tokens are prohibited when trusted publishing is available.
+- Phishing-resistant MFA, protected branches, required review, and environment approval enforced for privileged repositories and releases.
+- Security exceptions are narrowly scoped, owned, documented, time-bounded, and tested; they may never silently weaken the ecosystem baseline.
 
 Definition of done:
 
@@ -655,6 +676,10 @@ Definition of done:
 - Security-sensitive flows audited.
 - Secrets are not committed.
 - Logs do not expose sensitive data.
+- The complete install-time dependency graph passes the configured vulnerability and malware gates.
+- Lockfiles, package-manager policy, CI action pins, token permissions, SBOMs, and provenance are validated automatically.
+- Publishing and deployment credentials are short-lived and job-scoped where provider support exists.
+- A documented containment, credential-revocation, dependency-rollback, and artifact-rebuild path exists for supply-chain incidents.
 
 ---
 

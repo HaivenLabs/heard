@@ -60,3 +60,4 @@ Before completion, verify all applicable items:
 - Permissions and tenant boundaries enforced.
 - Failure handling and observability included.
 - Docs updated for durable decisions.
+- Supply-chain policy, dependency audit, immutable CI action, least-privilege credential, SBOM, and provenance checks pass.

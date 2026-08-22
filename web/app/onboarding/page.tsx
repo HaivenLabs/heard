@@ -80,8 +80,8 @@ function Onboarding({ session }: { session: Session }) {
           incentive_text: "",
           sms_keyword: "",
           sms_phone: "",
-          google_review_url: "https://maps.app.goo.gl/D3cEeXBEtGaKF2Lz8",
-          yelp_review_url: "https://www.yelp.com/biz/nom-san-juan-capistrano"
+          google_review_url: "",
+          yelp_review_url: ""
         }
       });
       setState({ ...state, campaign, next_step: "feedback_link" });

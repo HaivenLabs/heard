@@ -55,3 +55,16 @@ Use fake local providers and seed data for development.
 Dependencies should be reviewed before introduction.
 
 Avoid adding large dependencies for small problems.
+
+### Install-time supply-chain controls
+
+Heard treats dependency installation as an untrusted execution boundary. The
+web application belongs to the root pnpm workspace, uses the repository's one
+committed lockfile, installs with `--frozen-lockfile`, and audits the complete
+development and production dependency graph. pnpm dependency build scripts are
+denied by default; any exception must be reviewed, documented, version-scoped,
+time-bounded, and added to the explicit `allowBuilds` policy.
+
+Pull requests must not weaken lockfile reproducibility, lifecycle-script
+blocking, least-privilege workflow permissions, or immutable GitHub Action
+references. Credentials must not be available to untrusted pull-request code.

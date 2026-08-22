@@ -13,7 +13,8 @@ assert.doesNotMatch(proxy, /request\.arrayBuffer\(\)/, "the API gateway must not
 assert.match(proxy, /MAX_PROXY_REQUEST_BODY_BYTES/, "the API gateway must enforce a request body bound");
 assert.match(nextConfig, /object-src 'none'/, "CSP must prohibit active object content");
 assert.match(nextConfig, /frame-ancestors 'none'/, "CSP must prevent framing of authenticated surfaces");
-assert.match(api, /!\["local", "docker", "test"\]\.includes/, "unknown frontend environments must fail closed to Passage authentication");
+assert.match(api, /NEXT_PUBLIC_PASSAGE_MODE !== "local"/, "local browser tokens must require an explicit local Passage mode opt-in");
+assert.match(compose, /PASSAGE_MODE:-jwks/, "Docker must use the real Passage boundary instead of the passwordless local adapter");
 assert.match(compose, /HEARD_BIND_ADDRESS:-127\.0\.0\.1/, "local Compose services must bind to loopback by default");
 assert.match(compose, /HEARD_API_PORT:-8082\}:8080/, "Heard must publish its API on host port 8082 while retaining container port 8080");
 assert.match(proxy, /API_INTERNAL_BASE_URL \?\? "http:\/\/localhost:8082"/, "local web development must proxy to Heard's host API port");

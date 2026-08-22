@@ -81,3 +81,46 @@ func TestOnboardingActivationIsIdempotentUnderConcurrency(t *testing.T) {
 		t.Fatalf("got activations=%d locations=%d events=%d; want one each", activations, locations, events)
 	}
 }
+
+func TestOnboardingNeverLeaksWorkspaceAcrossEmails(t *testing.T) {
+	databaseURL := os.Getenv("HEARD_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set HEARD_TEST_DATABASE_URL to run PostgreSQL onboarding integration tests")
+	}
+	ctx := context.Background()
+	store, err := NewStore(ctx, Config{DatabaseURL: databaseURL, WebBaseURL: "http://heard.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.RunMigrations(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := newLocalPassageProvider("integration-secret", time.Now)
+	stamp := time.Now().UnixNano()
+	first, err := provider.IssueRegistration(fmt.Sprintf("first-%d@heard.test", stamp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := provider.IssueRegistration(fmt.Sprintf("second-%d@heard.test", stamp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.pool.Exec(ctx, `delete from tenants where id in ($1,$2)`, first.TenantID, second.TenantID)
+
+	created, err := store.ActivateRestaurantWorkspace(ctx, first.Identity, "owner", "first-workspace-key", createOnboardingActivationRequest{RestaurantName: "First Cafe", LocationName: "Downtown", Source: "direct"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Tenant == nil || created.Tenant.Name != "First Cafe" {
+		t.Fatalf("first workspace was not created: %#v", created)
+	}
+	secondState, err := store.GetOnboardingState(ctx, second.Identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondState.Tenant != nil || secondState.Status == "complete" || secondState.NextStep != "workspace" {
+		t.Fatalf("second email inherited another workspace: %#v", secondState)
+	}
+}

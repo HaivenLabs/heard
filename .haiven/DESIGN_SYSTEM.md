@@ -2,9 +2,8 @@
 
 This document defines the shared design direction for Haiven products.
 
-It is not a full component library yet.
-
-It is the product experience standard every Haiven repo should follow.
+It is the product experience standard and shared package contract every Haiven
+repo should follow.
 
 ---
 
@@ -85,6 +84,7 @@ Default direction:
 - minimal clutter
 - soft hierarchy
 - thoughtful contrast
+- photographic depth and layered tonal transitions on marketing surfaces
 - rounded cards where appropriate
 - sharp tables where appropriate
 - clear form controls
@@ -100,6 +100,7 @@ Avoid:
 - unclear disabled states
 - low-contrast gray soup
 - admin panels that look like raw database screens
+- ornamental grid lines used as decoration
 
 ---
 
@@ -161,6 +162,27 @@ Do not overbuild the token system before products need it.
 
 Start with consistent primitives and extract shared packages when duplication proves the need.
 
+Implemented packages:
+
+- `@haiven/design-tokens` is the framework-neutral source for semantic colors,
+  typography, spacing, radii, shadows, breakpoints, motion, layout, and product
+  accents. It exports CSS variables, JSON, and TypeScript values.
+- `@haiven/react` contains accessible React primitives built on those tokens.
+- `@haiven/marketing` contains shared marketing composition contracts and
+  accessible section primitives.
+- `@haiven/seo` contains reusable metadata and structured-data helpers.
+
+Products should depend on semantic roles such as `surface-canvas`,
+`text-secondary`, and `action-primary` instead of copying raw brand values.
+Product-specific accents are selected through the product theme contract.
+Public product metadata lives in the versioned root `products.json` federation
+registry rather than inside a presentation package.
+
+Compass distributes the `haiven-builder` skill so coding agents can discover
+the correct packages, product temperament, responsive rules, accessibility
+baseline, and validation workflow without duplicating those instructions in
+each repository.
+
 ---
 
 ## Product family consistency
@@ -174,3 +196,14 @@ qurl should feel creative, fast, visual, and trustworthy.
 Heard should feel calm, restaurant-friendly, polished, and operationally useful.
 
 All should feel like Haiven.
+
+## Public marketing surfaces
+
+Each product repository owns its complete marketing experience. Product
+marketing sites use the shared React, TypeScript, Next.js App Router, Tailwind,
+design-token, metadata, and validation conventions, then publish an independent
+static artifact beneath `/products/<slug>` on the Haiven domain.
+
+The Haiven umbrella website may list and link products, but it must not copy or
+fork product-owned marketing pages. New products integrate through the versioned
+product federation registry and must pass Compass marketing and design checks.
