@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAdminSession } from "../../../components/admin-session";
 import { RatingFace, RatingValue } from "../../../components/rating-face";
 import { apiFetch, FeedbackLink, Location, Session, SurveyCampaign } from "../../../lib/api";
@@ -20,13 +21,31 @@ const defaultCampaign = {
   pathSlug: "feedback"
 };
 
+const emptyCampaignForm = {
+  location_id: "",
+  restaurant_name: defaultCampaign.restaurantName,
+  name: defaultCampaign.name,
+  logo_url: defaultCampaign.logoURL,
+  headline: defaultCampaign.headline,
+  prompt: defaultCampaign.prompt,
+  incentive_text: defaultCampaign.incentive,
+  sms_keyword: defaultCampaign.smsKeyword,
+  sms_phone: defaultCampaign.smsPhone,
+  google_review_url: defaultCampaign.googleReviewURL,
+  yelp_review_url: defaultCampaign.yelpReviewURL,
+  path_slug: defaultCampaign.pathSlug
+};
+
 export default function CampaignBuilderPage() {
   const session = useAdminSession();
   return <CampaignBuilder session={session} />;
 }
 
 function CampaignBuilder({ session }: { session: Session }) {
+  const searchParams = useSearchParams();
   const tenantId = session.tenant_id;
+  const campaignID = searchParams.get("campaign")?.trim() ?? "";
+  const creatingNew = searchParams.get("new") === "1";
   const [locations, setLocations] = useState<Location[]>([]);
   const [campaign, setCampaign] = useState<SurveyCampaign | null>(null);
   const [link, setLink] = useState<FeedbackLink | null>(null);
@@ -36,20 +55,7 @@ function CampaignBuilder({ session }: { session: Session }) {
   const [origin, setOrigin] = useState("http://localhost:3010");
   const [tenantSlug, setTenantSlug] = useState("");
 
-  const [formData, setFormData] = useState({
-    location_id: "",
-    restaurant_name: defaultCampaign.restaurantName,
-    name: defaultCampaign.name,
-    logo_url: defaultCampaign.logoURL,
-    headline: defaultCampaign.headline,
-    prompt: defaultCampaign.prompt,
-    incentive_text: defaultCampaign.incentive,
-    sms_keyword: defaultCampaign.smsKeyword,
-    sms_phone: defaultCampaign.smsPhone,
-    google_review_url: defaultCampaign.googleReviewURL,
-    yelp_review_url: defaultCampaign.yelpReviewURL,
-    path_slug: defaultCampaign.pathSlug
-  });
+  const [formData, setFormData] = useState(emptyCampaignForm);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -79,13 +85,17 @@ function CampaignBuilder({ session }: { session: Session }) {
   }, [tenantId]);
 
   useEffect(() => {
-    if (!tenantId) return;
-    void apiFetch<{ campaign?: SurveyCampaign; feedback_link?: FeedbackLink }>("/api/v1/onboarding")
-      .then((payload) => {
+    if (!tenantId || creatingNew) return;
+    const campaignRequest: Promise<{ campaign?: SurveyCampaign; feedback_link?: FeedbackLink }> = campaignID
+      ? apiFetch<SurveyCampaign>(`/api/v1/survey-campaigns/${encodeURIComponent(campaignID)}`, { tenantId }).then((item) => ({ campaign: item }))
+      : apiFetch<{ campaign?: SurveyCampaign; feedback_link?: FeedbackLink }>("/api/v1/onboarding");
+    void campaignRequest
+      .then(async (payload) => {
         if (payload.campaign) {
           setCampaign(payload.campaign);
           setFormData((prev) => ({
             ...prev,
+            location_id: payload.campaign?.location_id || prev.location_id,
             restaurant_name: payload.campaign?.restaurant_name || prev.restaurant_name,
             name: payload.campaign?.name || prev.name,
             logo_url: payload.campaign?.logo_url || prev.logo_url,
@@ -97,11 +107,20 @@ function CampaignBuilder({ session }: { session: Session }) {
             google_review_url: payload.campaign?.google_review_url || prev.google_review_url,
             yelp_review_url: payload.campaign?.yelp_review_url || prev.yelp_review_url
           }));
+          const links = await apiFetch<{ items: FeedbackLink[] }>(`/api/v1/feedback-links?campaign_id=${encodeURIComponent(payload.campaign.id)}`, { tenantId });
+          if (links.items[0]) setLink(links.items[0]);
         }
         if (payload.feedback_link) setLink(payload.feedback_link);
       })
       .catch(() => {});
-  }, [tenantId]);
+  }, [campaignID, creatingNew, tenantId]);
+
+  useEffect(() => {
+    if (!creatingNew) return;
+    setCampaign(null);
+    setLink(null);
+    setFormData((previous) => ({ ...emptyCampaignForm, location_id: previous.location_id }));
+  }, [creatingNew]);
 
   function handleInputChange(e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -124,34 +143,34 @@ function CampaignBuilder({ session }: { session: Session }) {
     setFormData((prev) => ({ ...prev, logo_url: "" }));
   }
 
-  async function createCampaign(event: FormEvent<HTMLFormElement>) {
+  async function saveCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
 
     try {
-      const createdCampaign = await apiFetch<SurveyCampaign>("/api/v1/survey-campaigns", {
-        method: "POST",
+      const campaignBody = {
+        location_id: formData.location_id,
+        name: formData.name,
+        restaurant_name: formData.restaurant_name,
+        headline: formData.headline,
+        prompt: formData.prompt,
+        incentive_text: formData.incentive_text,
+        sms_keyword: formData.sms_keyword,
+        sms_phone: formData.sms_phone,
+        google_review_url: formData.google_review_url,
+        yelp_review_url: formData.yelp_review_url,
+        logo_url: formData.logo_url
+      };
+      const savedCampaign = await apiFetch<SurveyCampaign>(campaign ? `/api/v1/survey-campaigns/${campaign.id}` : "/api/v1/survey-campaigns", {
+        method: campaign ? "PATCH" : "POST",
         tenantId,
-        body: {
-          tenant_id: tenantId,
-          location_id: formData.location_id,
-          name: formData.name,
-          restaurant_name: formData.restaurant_name,
-          headline: formData.headline,
-          prompt: formData.prompt,
-          incentive_text: formData.incentive_text,
-          sms_keyword: formData.sms_keyword,
-          sms_phone: formData.sms_phone,
-          google_review_url: formData.google_review_url,
-          yelp_review_url: formData.yelp_review_url,
-          logo_url: formData.logo_url
-        }
+        body: campaign ? campaignBody : { ...campaignBody, tenant_id: tenantId }
       });
 
       const linkBody = {
         tenant_id: tenantId,
-        campaign_id: createdCampaign.id,
+        campaign_id: savedCampaign.id,
         slug: formData.path_slug
       };
 
@@ -160,7 +179,7 @@ function CampaignBuilder({ session }: { session: Session }) {
         createdLink = await apiFetch<FeedbackLink>(`/api/v1/feedback-links/${link.id}`, {
           method: "PATCH",
           tenantId,
-          body: { campaign_id: createdCampaign.id, slug: formData.path_slug }
+          body: { campaign_id: savedCampaign.id, slug: formData.path_slug }
         });
       } else {
         createdLink = await apiFetch<FeedbackLink>("/api/v1/feedback-links", {
@@ -169,16 +188,16 @@ function CampaignBuilder({ session }: { session: Session }) {
           body: {
             ...linkBody,
             location_id: formData.location_id,
-            name: `${createdCampaign.name} QR`,
+            name: `${savedCampaign.name} QR`,
             channel: "flyer"
           }
         });
       }
 
-      setCampaign(createdCampaign);
+      setCampaign(savedCampaign);
       setLink(createdLink);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not create survey campaign");
+      setError(caught instanceof Error ? caught.message : "Could not save survey campaign");
     } finally {
       setBusy(false);
     }
@@ -200,13 +219,13 @@ function CampaignBuilder({ session }: { session: Session }) {
         <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">Campaign builder</p>
-            <h1 className="mt-4 font-display text-4xl tracking-[-0.05em] sm:text-5xl">Create a flyer guests will actually scan.</h1>
-            <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-ink/55">Choose the location, tune the guest-facing message, and preview the complete takeout flyer in real-time.</p>
+            <h1 className="mt-4 font-display text-4xl tracking-[-0.05em] sm:text-5xl">{campaign ? "Edit your guest feedback campaign." : "Create a flyer guests will actually scan."}</h1>
+            <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-ink/55">{campaign ? "Tune the guest-facing message, then save changes to this campaign and its existing flyer link." : "Choose the location, tune the guest-facing message, and preview the complete takeout flyer in real-time."}</p>
           </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-          <form className="space-y-5" onSubmit={createCampaign}>
+          <form className="space-y-5" onSubmit={saveCampaign}>
             {error ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</div> : null}
 
             <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
@@ -220,8 +239,8 @@ function CampaignBuilder({ session }: { session: Session }) {
                   </select>
                 </label>
 
-                <TextInput label="Restaurant name" name="restaurant_name" onChange={handleInputChange} value={formData.restaurant_name} />
-                <TextInput label="Campaign name" name="name" onChange={handleInputChange} value={formData.name} />
+                <TextInput label="Restaurant name" name="restaurant_name" onChange={handleInputChange} required value={formData.restaurant_name} />
+                <TextInput label="Campaign name" name="name" onChange={handleInputChange} required value={formData.name} />
 
                 {/* Logo Image File Uploader */}
                 <div className="sm:col-span-2">
@@ -250,8 +269,8 @@ function CampaignBuilder({ session }: { session: Session }) {
                   </div>
                 </div>
 
-                <TextInput label="Flyer headline" name="headline" onChange={handleInputChange} value={formData.headline} />
-                <TextInput label="Survey prompt" name="prompt" onChange={handleInputChange} value={formData.prompt} />
+                <TextInput label="Flyer headline" name="headline" onChange={handleInputChange} required value={formData.headline} />
+                <TextInput label="Survey prompt" name="prompt" onChange={handleInputChange} required value={formData.prompt} />
 
                 <label className="block sm:col-span-2">
                   <span className="mb-1 block text-sm font-medium">Gift card / giveaway copy</span>
@@ -315,7 +334,7 @@ function CampaignBuilder({ session }: { session: Session }) {
 
             {/* Action Submit Button */}
             <button className="h-13 w-full rounded-full bg-clay px-5 py-4 font-display text-sm font-semibold uppercase tracking-[0.12em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.24)] transition hover:-translate-y-0.5 hover:bg-[#b95635] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || locations.length === 0} type="submit">
-              {busy ? "Saving campaign..." : link || campaign ? "Update flyer survey link" : "Create flyer survey link"}
+              {busy ? "Saving campaign..." : campaign ? "Save campaign changes" : "Create flyer survey link"}
             </button>
           </form>
 
@@ -365,11 +384,11 @@ function CampaignBuilder({ session }: { session: Session }) {
   );
 }
 
-function TextInput({ label, name, onChange, value }: { label: string; name: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; value: string }) {
+function TextInput({ label, name, onChange, required = false, value }: { label: string; name: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; required?: boolean; value: string }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>
-      <input className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" name={name} onChange={onChange} value={value} />
+      <input className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" name={name} onChange={onChange} required={required} value={value} />
     </label>
   );
 }

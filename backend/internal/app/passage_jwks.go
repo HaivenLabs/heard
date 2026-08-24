@@ -171,9 +171,9 @@ func selectHeardRole(roles []string) (string, bool) {
 func heardPermissions(role string) []string {
 	switch role {
 	case "owner":
-		return []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"}
+		return []string{"tenant:read", "tenant:create", "tenant:write", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"}
 	case "admin":
-		return []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"}
+		return []string{"tenant:read", "tenant:create", "tenant:write", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"}
 	case "manager":
 		return []string{"tenant:read", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write"}
 	case "member":

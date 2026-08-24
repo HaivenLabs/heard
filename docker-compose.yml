@@ -40,6 +40,10 @@ services:
       PASSAGE_AUDIENCE: ${PASSAGE_AUDIENCE:-heard}
       PASSAGE_CLIENT_ID: ${PASSAGE_CLIENT_ID:-heard}
       PASSAGE_CALLBACK_URL: ${PASSAGE_CALLBACK_URL:-http://localhost:3010/api/v1/auth/callback}
+      HEARD_GOOGLE_CLIENT_ID: ${HEARD_GOOGLE_CLIENT_ID:-}
+      HEARD_GOOGLE_CLIENT_SECRET: ${HEARD_GOOGLE_CLIENT_SECRET:-}
+      HEARD_GOOGLE_REDIRECT_URL: ${HEARD_GOOGLE_REDIRECT_URL:-http://localhost:3020/api/v1/auth/external/google/callback}
+      PASSAGE_PROVIDER_CONFIGURATION_TOKEN: ${PASSAGE_PROVIDER_CONFIGURATION_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy

@@ -109,16 +109,56 @@ paths:
         - {name: email, in: query, required: false, schema: {type: string, format: email}}
       responses:
         "302": {description: Continue secure account authentication}
+  /api/v1/auth/register:
+    post:
+      summary: Create a heard account with email and password
+      description: Creates the shared identity through the configured identity service. The identity service sends a verification email before Heard asks for restaurant and first-location details.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeardRegistrationRequest"
+      responses:
+        "201":
+          description: Account created and verification email requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeardRegistrationResponse"
+        "400": {description: Registration details are invalid}
+        "409": {description: An account already exists for this email}
+        "429": {description: Registration attempts are rate limited}
+        "503": {description: Identity service unavailable}
+  /api/v1/auth/login:
+    post:
+      summary: Sign in to heard with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeardLoginRequest"
+      responses:
+        "200": {description: Heard browser session established}
+        "400": {description: Login details are invalid}
+        "401": {description: Credentials are invalid or unavailable for Heard}
+        "503": {description: Identity service unavailable}
   /api/v1/auth/callback:
     get:
       summary: Complete secure heard account authentication
-      description: Validates state, exchanges the one-time PKCE code server-side, verifies the identity token, stores it in an HttpOnly SameSite=Lax heard session cookie, and redirects to the saved same-site path. No token is placed in a browser URL or returned to JavaScript.
+      description: Validates state; handles provider cancellation and failure by redirecting to a branded Heard auth page; otherwise exchanges the one-time PKCE code server-side, verifies the identity token, stores it in an HttpOnly SameSite=Lax heard session cookie, and redirects to the saved same-site path. No token is placed in a browser URL or returned to JavaScript.
       security: []
       parameters:
-        - {name: code, in: query, required: true, schema: {type: string}}
+        - {name: code, in: query, required: false, schema: {type: string}}
         - {name: state, in: query, required: true, schema: {type: string}}
+        - {name: error, in: query, required: false, schema: {type: string}}
       responses:
-        "302": {description: Secure Heard browser session established}
+        "302": {description: Secure Heard browser session established, or provider cancellation/failure returned to a branded Heard auth page}
         "400": {description: State or authorization code is invalid or expired}
         "503": {description: Identity service unavailable}
   /api/v1/session:
@@ -209,6 +249,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+    patch:
+      summary: Change the active tenant's public handle
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantHandleRequest"
+      responses:
+        "200":
+          description: Tenant handle updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+  /api/v1/tenant-handles/{handle}/availability:
+    get:
+      summary: Check whether a public restaurant handle is available
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Handle availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantHandleAvailability"
   /api/v1/locations:
     get:
       summary: List locations for the active tenant
@@ -305,6 +378,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SurveyCampaign"
+    patch:
+      summary: Update a survey campaign
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSurveyCampaignRequest"
+      responses:
+        "200":
+          description: Survey campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyCampaign"
   /api/v1/public/surveys/{token}:
     get:
       summary: Resolve a public survey campaign by opaque token
@@ -359,6 +453,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Location"
   /api/v1/feedback-links:
+    get:
+      summary: List feedback links for the active tenant, optionally for a campaign
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: campaign_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Feedback link collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FeedbackLink"
     post:
       summary: Create feedback link
       parameters:
@@ -730,12 +845,34 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email }
+    HeardRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, source]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12 }
+        source: { type: string, enum: [homepage, guest_demo, direct] }
+    HeardRegistrationResponse:
+      type: object
+      required: [email, verification_delivery]
+      properties:
+        email: { type: string, format: email }
+        verification_delivery: { type: string, enum: [requested] }
+    HeardLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1 }
     CreateOnboardingActivationRequest:
       type: object
-      required: [restaurant_name, location_name, source]
+      required: [restaurant_name, restaurant_handle, location_name, source]
       additionalProperties: false
       properties:
         restaurant_name: { type: string, minLength: 2, maxLength: 160 }
+        restaurant_handle: { type: string, minLength: 2, maxLength: 80 }
         location_name: { type: string, minLength: 2, maxLength: 160 }
         timezone: { type: string, default: America/Los_Angeles }
         source: { type: string, enum: [homepage, guest_demo, direct] }
@@ -907,6 +1044,18 @@ components:
       properties:
         name: { type: string }
         slug: { type: string }
+    UpdateTenantHandleRequest:
+      type: object
+      additionalProperties: false
+      required: [slug]
+      properties:
+        slug: { type: string, minLength: 2, maxLength: 80 }
+    TenantHandleAvailability:
+      type: object
+      required: [handle, available]
+      properties:
+        handle: { type: string }
+        available: { type: boolean }
     CreateLocationRequest:
       type: object
       required: [tenant_id, name]
@@ -930,6 +1079,25 @@ components:
         sms_phone: { type: string }
         google_review_url: { type: string, format: uri }
         yelp_review_url: { type: string, format: uri }
+        logo_url: { type: string }
+        theme: { type: string }
+    UpdateSurveyCampaignRequest:
+      type: object
+      additionalProperties: false
+      required: [location_id, name, restaurant_name, headline, prompt]
+      properties:
+        location_id: { type: string, format: uuid }
+        name: { type: string }
+        restaurant_name: { type: string }
+        headline: { type: string }
+        prompt: { type: string }
+        incentive_text: { type: string }
+        sms_keyword: { type: string }
+        sms_phone: { type: string }
+        google_review_url: { type: string, format: uri }
+        yelp_review_url: { type: string, format: uri }
+        logo_url: { type: string }
+        theme: { type: string }
     CreateFeedbackLinkRequest:
       type: object
       required: [tenant_id, location_id]

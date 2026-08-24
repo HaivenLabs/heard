@@ -202,6 +202,13 @@ Production browser entry starts at the provider-neutral `GET /api/v1/auth/start`
 
 `PASSAGE_PUBLIC_URL` is the browser-visible identity origin used only for authorization redirects (local combined-stack default `http://localhost:3020`). In production it must be a Heard-owned custom auth domain with Heard-branded Google credentials and consent screen; do not expose a Passage hostname or Passage branding. `PASSAGE_BASE_URL` remains the backend-reachable origin used for token exchange and JWKS. If `PASSAGE_PUBLIC_URL` is unset it falls back to `PASSAGE_BASE_URL` for compatibility. Never configure a Docker-only hostname such as `host.docker.internal` as the public URL because the browser must send the identity origin's session cookie.
 
+Heard owns its Google OAuth client ID and secret. When those values are set,
+the Heard API configures the `heard/google` connection once at startup through
+Passage's service-authenticated provider-configuration API. Passage encrypts
+the secret before persistence and performs Google's code exchange; normal
+sign-in requests never contain the client secret. Both backends must receive
+the same 32+-character `PASSAGE_PROVIDER_CONFIGURATION_TOKEN`.
+
 Browser traffic uses the Heard origin at `http://localhost:3010/api/*`. Next.js forwards those requests over the Docker network to the Go API at `api:8080`. The container-only port stays `8080`, while Heard publishes host port `8082` by default for direct API development and debugging; override the host port with `HEARD_API_PORT` when needed.
 
 Public marketing-lead, feedback-session, and feedback-response writes accept only bounded `application/json` requests. Text, category lists, and arbitrary metadata have contract limits. Rate limits use bounded in-memory buckets only in explicit local runtimes; staging and production use atomic PostgreSQL buckets shared across API replicas and fail closed if that protection is unavailable. `X-Forwarded-For` is ignored unless the immediate peer belongs to `TRUSTED_PROXY_CIDRS`; an approved edge proxy must overwrite, not append to, untrusted client-supplied forwarding headers.

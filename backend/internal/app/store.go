@@ -21,6 +21,7 @@ type Store struct {
 
 const (
 	demoTenantID        = "11111111-1111-1111-1111-111111111111"
+	demoTenantSlug      = "nom-demo"
 	demoLocationID      = "22222222-2222-2222-2222-222222222222"
 	demoFeedbackLinkID  = "33333333-3333-3333-3333-333333333333"
 	demoCampaignID      = "44444444-4444-4444-4444-444444444444"
@@ -51,9 +52,9 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 
 	if _, err := s.pool.Exec(ctx, `
 		insert into tenants (id, name, slug)
-		values ($1, 'nom', 'nom')
+		values ($1, 'nom', $2)
 		on conflict (id) do update set name = excluded.name, slug = excluded.slug
-	`, demoTenantID); err != nil {
+	`, demoTenantID, demoTenantSlug); err != nil {
 		return err
 	}
 	if _, err := s.pool.Exec(ctx, `
@@ -172,6 +173,56 @@ func (s *Store) GetTenant(ctx context.Context, tenantID string) (Tenant, error) 
 	return tenant, err
 }
 
+func (s *Store) TenantHandleAvailability(ctx context.Context, rawHandle string) (string, bool, error) {
+	handle := optionalSlug(rawHandle)
+	if len(handle) < 2 || len(handle) > 80 {
+		return "", false, errors.New("restaurant handle must be between 2 and 80 characters")
+	}
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `select exists(select 1 from tenants where slug = $1)`, handle).Scan(&exists); err != nil {
+		return "", false, err
+	}
+	return handle, !exists, nil
+}
+
+func (s *Store) UpdateTenantHandle(ctx context.Context, tenantID, actorID, actorRole, rawHandle string) (Tenant, error) {
+	handle, available, err := s.TenantHandleAvailability(ctx, rawHandle)
+	if err != nil {
+		return Tenant{}, err
+	}
+	tenant, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		return Tenant{}, err
+	}
+	if tenant.Slug == handle {
+		return tenant, nil
+	}
+	if !available {
+		return Tenant{}, errors.New("that restaurant handle is already taken")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Tenant{}, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `update tenants set slug = $1 where id = $2`, handle, tenantID); err != nil {
+		return Tenant{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		update feedback_links
+		set destination_url = $1 || '/f/' || $2 || '/' || slug, qr_asset_url = '', qr_svg = ''
+		where tenant_id = $3 and slug <> ''
+	`, strings.TrimRight(s.cfg.WebBaseURL, "/"), handle, tenantID); err != nil {
+		return Tenant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Tenant{}, err
+	}
+	tenant.Slug = handle
+	_ = s.writeAudit(ctx, pgx.Tx(nil), tenantID, actorID, actorRole, "tenant.handle_updated", "tenant", tenantID, map[string]any{"slug": handle})
+	return tenant, nil
+}
+
 func (s *Store) GetOnboardingState(ctx context.Context, identity Identity) (OnboardingState, error) {
 	state := OnboardingState{}
 	var tenant Tenant
@@ -239,8 +290,8 @@ func (s *Store) GetOnboardingState(ctx context.Context, identity Identity) (Onbo
 			order by created_at asc
 			limit 1
 		`, tenant.ID, state.Campaign.ID).Scan(
-		&link.ID, &link.TenantID, &link.LocationID, &link.CampaignID, &link.Name, &link.Token, &link.Slug, &link.Status,
-		&link.Channel, &link.QRAssetURL, &link.QRSVG, &link.Destination, &link.CreatedAt,
+			&link.ID, &link.TenantID, &link.LocationID, &link.CampaignID, &link.Name, &link.Token, &link.Slug, &link.Status,
+			&link.Channel, &link.QRAssetURL, &link.QRSVG, &link.Destination, &link.CreatedAt,
 		)
 		if err == nil {
 			isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
@@ -259,11 +310,12 @@ func (s *Store) ActivateRestaurantWorkspace(ctx context.Context, identity Identi
 		return OnboardingState{}, errors.New("idempotency key must be between 8 and 200 characters")
 	}
 	req.RestaurantName = strings.TrimSpace(req.RestaurantName)
+	req.RestaurantHandle = optionalSlug(req.RestaurantHandle)
 	req.LocationName = strings.TrimSpace(req.LocationName)
 	req.Timezone = defaultString(strings.TrimSpace(req.Timezone), "America/Los_Angeles")
 	req.Source = defaultString(strings.TrimSpace(req.Source), "direct")
-	if req.RestaurantName == "" || req.LocationName == "" {
-		return OnboardingState{}, errors.New("restaurant and location names are required")
+	if req.RestaurantName == "" || req.RestaurantHandle == "" || req.LocationName == "" {
+		return OnboardingState{}, errors.New("restaurant name, handle, and location name are required")
 	}
 	switch req.Source {
 	case "homepage", "guest_demo", "direct":
@@ -297,7 +349,7 @@ func (s *Store) ActivateRestaurantWorkspace(ctx context.Context, identity Identi
 		return OnboardingState{}, err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := claimTenantHandle(ctx, tx, tenantID, req.RestaurantName); err != nil {
+	if _, err := claimTenantHandle(ctx, tx, tenantID, req.RestaurantName, req.RestaurantHandle); err != nil {
 		return OnboardingState{}, err
 	}
 	if _, err := tx.Exec(ctx, `
@@ -482,6 +534,92 @@ func (s *Store) GetSurveyCampaign(ctx context.Context, tenantID, campaignID stri
 	return scanSurveyCampaign(row)
 }
 
+func (s *Store) UpdateSurveyCampaign(ctx context.Context, tenantID, actorID, actorRole, campaignID string, req updateSurveyCampaignRequest) (SurveyCampaign, error) {
+	if strings.TrimSpace(req.LocationID) == "" || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.RestaurantName) == "" || strings.TrimSpace(req.Headline) == "" || strings.TrimSpace(req.Prompt) == "" {
+		return SurveyCampaign{}, errors.New("location, campaign name, restaurant name, headline, and prompt are required")
+	}
+	if _, err := s.GetLocation(ctx, tenantID, req.LocationID); err != nil {
+		return SurveyCampaign{}, errors.New("location not found for tenant")
+	}
+	campaign, err := s.GetSurveyCampaign(ctx, tenantID, campaignID)
+	if err != nil {
+		return SurveyCampaign{}, err
+	}
+	campaign.LocationID = req.LocationID
+	campaign.Name = strings.TrimSpace(req.Name)
+	campaign.RestaurantName = strings.TrimSpace(req.RestaurantName)
+	campaign.Headline = strings.TrimSpace(req.Headline)
+	campaign.Prompt = strings.TrimSpace(req.Prompt)
+	campaign.IncentiveText = strings.TrimSpace(req.IncentiveText)
+	campaign.SMSKeyword = strings.TrimSpace(req.SMSKeyword)
+	campaign.SMSPhone = strings.TrimSpace(req.SMSPhone)
+	campaign.GoogleReviewURL = strings.TrimSpace(req.GoogleReviewURL)
+	campaign.YelpReviewURL = strings.TrimSpace(req.YelpReviewURL)
+	campaign.LogoURL = strings.TrimSpace(req.LogoURL)
+	campaign.Theme = strings.TrimSpace(req.Theme)
+	if campaign.Theme == "" {
+		campaign.Theme = "teal"
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return SurveyCampaign{}, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		update survey_campaigns
+		set location_id = $1, name = $2, restaurant_name = $3, headline = $4, prompt = $5, incentive_text = $6,
+			sms_keyword = $7, sms_phone = $8, google_review_url = $9, yelp_review_url = $10, logo_url = $11, theme = $12
+		where id = $13 and tenant_id = $14
+	`, campaign.LocationID, campaign.Name, campaign.RestaurantName, campaign.Headline, campaign.Prompt, campaign.IncentiveText,
+		campaign.SMSKeyword, campaign.SMSPhone, campaign.GoogleReviewURL, campaign.YelpReviewURL, campaign.LogoURL, campaign.Theme,
+		campaign.ID, tenantID); err != nil {
+		return SurveyCampaign{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		update feedback_links
+		set location_id = $1
+		where tenant_id = $2 and campaign_id = $3
+	`, campaign.LocationID, tenantID, campaign.ID); err != nil {
+		return SurveyCampaign{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SurveyCampaign{}, err
+	}
+	_ = s.writeAudit(ctx, pgx.Tx(nil), tenantID, actorID, actorRole, "survey_campaign.updated", "survey_campaign", campaign.ID, map[string]any{
+		"location_id": campaign.LocationID,
+		"name":        campaign.Name,
+	})
+	return campaign, nil
+}
+
+func (s *Store) ListFeedbackLinks(ctx context.Context, tenantID, campaignID string) ([]FeedbackLink, error) {
+	query := `
+		select id::text, tenant_id::text, location_id::text, coalesce(campaign_id::text, ''), name, token, coalesce(slug, ''), status, channel, qr_asset_url, qr_svg, destination_url, created_at
+		from feedback_links
+		where tenant_id = $1`
+	args := []any{tenantID}
+	if campaignID = strings.TrimSpace(campaignID); campaignID != "" {
+		query += " and campaign_id = $2"
+		args = append(args, campaignID)
+	}
+	query += " order by created_at desc"
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var links []FeedbackLink
+	for rows.Next() {
+		link, err := scanFeedbackLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
+		links = append(links, link)
+	}
+	return links, rows.Err()
+}
+
 func (s *Store) CreateFeedbackLink(ctx context.Context, tenantID, actorID, actorRole string, req createFeedbackLinkRequest) (FeedbackLink, error) {
 	if tenantID == "" || tenantID != req.TenantID {
 		return FeedbackLink{}, errors.New("tenant mismatch")
@@ -620,9 +758,6 @@ func (s *Store) ResolveFeedbackLink(ctx context.Context, token string) (Feedback
 		&link.Destination,
 		&link.CreatedAt,
 	)
-	if err == nil {
-		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
-	}
 	return link, err
 }
 
@@ -647,9 +782,6 @@ func (s *Store) ResolveFeedbackLinkByID(ctx context.Context, tenantID, linkID st
 		&link.Destination,
 		&link.CreatedAt,
 	)
-	if err == nil {
-		isolateStoredQURL(&link, s.cfg.IsLocalRuntime())
-	}
 	return link, err
 }
 
@@ -1367,6 +1499,10 @@ type surveyCampaignScanner interface {
 	Scan(dest ...any) error
 }
 
+type feedbackLinkScanner interface {
+	Scan(dest ...any) error
+}
+
 func scanSurveyCampaign(row surveyCampaignScanner) (SurveyCampaign, error) {
 	var campaign SurveyCampaign
 	err := row.Scan(
@@ -1388,6 +1524,26 @@ func scanSurveyCampaign(row surveyCampaignScanner) (SurveyCampaign, error) {
 		&campaign.CreatedAt,
 	)
 	return campaign, err
+}
+
+func scanFeedbackLink(row feedbackLinkScanner) (FeedbackLink, error) {
+	var link FeedbackLink
+	err := row.Scan(
+		&link.ID,
+		&link.TenantID,
+		&link.LocationID,
+		&link.CampaignID,
+		&link.Name,
+		&link.Token,
+		&link.Slug,
+		&link.Status,
+		&link.Channel,
+		&link.QRAssetURL,
+		&link.QRSVG,
+		&link.Destination,
+		&link.CreatedAt,
+	)
+	return link, err
 }
 
 func slugify(explicit, fallback string) string {
@@ -1417,31 +1573,21 @@ func optionalSlug(value string) string {
 // uses on conflict do nothing so concurrent claims of the same handle resolve
 // atomically against the tenants.slug unique constraint; if the tenant row
 // already exists (a retry), the stored handle is kept.
-func claimTenantHandle(ctx context.Context, tx pgx.Tx, tenantID, name string) (string, error) {
-	base := slugify("", name)
-	candidate := base
-	for attempt := 0; attempt < 50; attempt++ {
-		if attempt > 0 {
-			candidate = fmt.Sprintf("%s-%d", base, attempt+1)
-		}
-		result, err := tx.Exec(ctx, `
-			insert into tenants (id, name, slug) values ($1, $2, $3)
-			on conflict do nothing
-		`, tenantID, name, candidate)
-		if err != nil {
-			return "", err
-		}
-		if result.RowsAffected() == 1 {
-			return candidate, nil
-		}
-		var stored string
-		err = tx.QueryRow(ctx, `select slug from tenants where id = $1`, tenantID).Scan(&stored)
-		if err == nil {
-			return stored, nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return "", err
-		}
+func claimTenantHandle(ctx context.Context, tx pgx.Tx, tenantID, name, handle string) (string, error) {
+	result, err := tx.Exec(ctx, `insert into tenants (id, name, slug) values ($1, $2, $3) on conflict do nothing`, tenantID, name, handle)
+	if err != nil {
+		return "", err
 	}
-	return base, nil
+	if result.RowsAffected() == 1 {
+		return handle, nil
+	}
+	var stored string
+	err = tx.QueryRow(ctx, `select slug from tenants where id = $1`, tenantID).Scan(&stored)
+	if err == nil {
+		return stored, nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errors.New("that restaurant handle is already taken")
+	}
+	return "", err
 }

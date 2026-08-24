@@ -46,7 +46,7 @@ function Console({ session }: { session: Session }) {
               Launch a feedback campaign tonight. Every response under five lands in recovery so your team knows who needs a human follow-up.
             </p>
           </div>
-          <Link className="inline-flex h-[3.25rem] items-center justify-center rounded-full bg-clay px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.25)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href="/admin/campaigns">
+          <Link className="inline-flex h-[3.25rem] items-center justify-center rounded-full bg-clay px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.25)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href="/admin/campaigns?new=1">
             Create campaign
           </Link>
         </div>
@@ -66,7 +66,7 @@ function Console({ session }: { session: Session }) {
                 <p className="font-body text-xs uppercase tracking-[0.22em] text-ink/40">Campaigns</p>
                 <h2 className="mt-1 font-display text-2xl tracking-[-0.035em]">What guests can see</h2>
               </div>
-              <Link className="font-body text-sm font-semibold text-clay" href="/admin/campaigns">Build another</Link>
+              <Link className="font-body text-sm font-semibold text-clay" href="/admin/campaigns?new=1">Build another</Link>
             </div>
             <div className="p-4">
               {!data ? <LoadingRows /> : null}
@@ -77,13 +77,13 @@ function Console({ session }: { session: Session }) {
                 </div>
               ) : null}
               {data?.campaigns.slice(0, 4).map((campaign) => (
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.4rem] px-4 py-4 transition hover:bg-ink/[0.035]" key={campaign.id}>
+                <Link className="flex flex-wrap items-center justify-between gap-4 rounded-[1.4rem] px-4 py-4 transition hover:bg-ink/[0.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clay" href={`/admin/campaigns?campaign=${encodeURIComponent(campaign.id)}`} key={campaign.id}>
                   <div>
                     <p className="font-display text-lg font-semibold">{campaign.name}</p>
                     <p className="mt-1 font-body text-sm text-ink/45">{campaign.restaurant_name.toLowerCase() === "nom" ? "nom" : campaign.restaurant_name} · {campaign.headline}</p>
                   </div>
                   <span className="rounded-full bg-olive/12 px-3 py-1.5 font-body text-xs font-semibold capitalize text-olive">{campaign.status}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

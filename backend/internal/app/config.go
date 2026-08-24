@@ -10,57 +10,65 @@ import (
 )
 
 type Config struct {
-	AppEnv                       string
-	AppPort                      string
-	LocalBindAddress             string
-	DatabaseURL                  string
-	PublicAppURL                 string
-	WebBaseURL                   string
-	AllowedOrigin                string
-	DemoSeedEnabled              bool
-	QURLBaseURL                  string
-	PassageMode                  string
-	LocalPassageSecret           string
-	PassageBaseURL               string
-	PassagePublicURL             string
-	PassageIssuer                string
-	PassageAudience              string
-	PassageJWKSCacheSeconds      int
-	PassageCallbackURL           string
-	PassageClientID              string
-	WorkerPollIntervalMS         int
-	WorkerBatchSize              int
-	PublicWriteRateLimit         int
-	PublicWriteRateWindowSeconds int
-	TrustedProxyCIDRs            []string
+	AppEnv                            string
+	AppPort                           string
+	LocalBindAddress                  string
+	DatabaseURL                       string
+	PublicAppURL                      string
+	WebBaseURL                        string
+	AllowedOrigin                     string
+	DemoSeedEnabled                   bool
+	QURLBaseURL                       string
+	PassageMode                       string
+	LocalPassageSecret                string
+	PassageBaseURL                    string
+	PassagePublicURL                  string
+	PassageIssuer                     string
+	PassageAudience                   string
+	PassageJWKSCacheSeconds           int
+	PassageCallbackURL                string
+	PassageClientID                   string
+	GoogleClientID                    string
+	GoogleClientSecret                string
+	GoogleRedirectURL                 string
+	PassageProviderConfigurationToken string
+	WorkerPollIntervalMS              int
+	WorkerBatchSize                   int
+	PublicWriteRateLimit              int
+	PublicWriteRateWindowSeconds      int
+	TrustedProxyCIDRs                 []string
 }
 
 func LoadConfig() Config {
 	passageBaseURL := getEnv("PASSAGE_BASE_URL", "http://localhost:8081")
 	return Config{
-		AppEnv:                       getEnv("APP_ENV", ""),
-		AppPort:                      getEnv("APP_PORT", "8082"),
-		LocalBindAddress:             getEnv("HEARD_BIND_ADDRESS", ""),
-		DatabaseURL:                  getEnv("DATABASE_URL", "postgres://heard:heard@localhost:5432/heard?sslmode=disable"),
-		PublicAppURL:                 getEnv("PUBLIC_APP_URL", "http://localhost:3010"),
-		WebBaseURL:                   getEnv("WEB_BASE_URL", "http://localhost:3010"),
-		AllowedOrigin:                getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
-		DemoSeedEnabled:              getEnv("HEARD_SEED_DEMO", "true") == "true",
-		QURLBaseURL:                  getEnv("QURL_BASE_URL", ""),
-		PassageMode:                  getEnv("PASSAGE_MODE", ""),
-		LocalPassageSecret:           getEnv("LOCAL_PASSAGE_SECRET", ""),
-		PassageBaseURL:               passageBaseURL,
-		PassagePublicURL:             getEnv("PASSAGE_PUBLIC_URL", passageBaseURL),
-		PassageIssuer:                getEnv("PASSAGE_ISSUER", "http://localhost:8081"),
-		PassageAudience:              getEnv("PASSAGE_AUDIENCE", "heard"),
-		PassageJWKSCacheSeconds:      getEnvInt("PASSAGE_JWKS_CACHE_SECONDS", 300),
-		PassageCallbackURL:           getEnv("PASSAGE_CALLBACK_URL", "http://localhost:3010/api/v1/auth/callback"),
-		PassageClientID:              getEnv("PASSAGE_CLIENT_ID", "heard"),
-		WorkerPollIntervalMS:         getEnvInt("WORKER_POLL_INTERVAL_MS", 1500),
-		WorkerBatchSize:              getEnvInt("WORKER_BATCH_SIZE", 50),
-		PublicWriteRateLimit:         getEnvInt("PUBLIC_WRITE_RATE_LIMIT", 30),
-		PublicWriteRateWindowSeconds: getEnvInt("PUBLIC_WRITE_RATE_WINDOW_SECONDS", 60),
-		TrustedProxyCIDRs:            splitEnvList(getEnv("TRUSTED_PROXY_CIDRS", "")),
+		AppEnv:                            getEnv("APP_ENV", ""),
+		AppPort:                           getEnv("APP_PORT", "8082"),
+		LocalBindAddress:                  getEnv("HEARD_BIND_ADDRESS", ""),
+		DatabaseURL:                       getEnv("DATABASE_URL", "postgres://heard:heard@localhost:5432/heard?sslmode=disable"),
+		PublicAppURL:                      getEnv("PUBLIC_APP_URL", "http://localhost:3010"),
+		WebBaseURL:                        getEnv("WEB_BASE_URL", "http://localhost:3010"),
+		AllowedOrigin:                     getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
+		DemoSeedEnabled:                   getEnv("HEARD_SEED_DEMO", "true") == "true",
+		QURLBaseURL:                       getEnv("QURL_BASE_URL", ""),
+		PassageMode:                       getEnv("PASSAGE_MODE", ""),
+		LocalPassageSecret:                getEnv("LOCAL_PASSAGE_SECRET", ""),
+		PassageBaseURL:                    passageBaseURL,
+		PassagePublicURL:                  getEnv("PASSAGE_PUBLIC_URL", passageBaseURL),
+		PassageIssuer:                     getEnv("PASSAGE_ISSUER", "http://localhost:8081"),
+		PassageAudience:                   getEnv("PASSAGE_AUDIENCE", "heard"),
+		PassageJWKSCacheSeconds:           getEnvInt("PASSAGE_JWKS_CACHE_SECONDS", 300),
+		PassageCallbackURL:                getEnv("PASSAGE_CALLBACK_URL", "http://localhost:3010/api/v1/auth/callback"),
+		PassageClientID:                   getEnv("PASSAGE_CLIENT_ID", "heard"),
+		GoogleClientID:                    getEnv("HEARD_GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:                getEnv("HEARD_GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:                 getEnv("HEARD_GOOGLE_REDIRECT_URL", "http://localhost:3020/api/v1/auth/external/google/callback"),
+		PassageProviderConfigurationToken: getEnv("PASSAGE_PROVIDER_CONFIGURATION_TOKEN", ""),
+		WorkerPollIntervalMS:              getEnvInt("WORKER_POLL_INTERVAL_MS", 1500),
+		WorkerBatchSize:                   getEnvInt("WORKER_BATCH_SIZE", 50),
+		PublicWriteRateLimit:              getEnvInt("PUBLIC_WRITE_RATE_LIMIT", 30),
+		PublicWriteRateWindowSeconds:      getEnvInt("PUBLIC_WRITE_RATE_WINDOW_SECONDS", 60),
+		TrustedProxyCIDRs:                 splitEnvList(getEnv("TRUSTED_PROXY_CIDRS", "")),
 	}
 }
 
@@ -142,6 +150,19 @@ func (cfg Config) ValidateAPI() error {
 		}
 	} else {
 		return fmt.Errorf("PASSAGE_MODE must be local or jwks; got %q", cfg.PassageMode)
+	}
+	googleConfigured := strings.TrimSpace(cfg.GoogleClientID) != "" || strings.TrimSpace(cfg.GoogleClientSecret) != ""
+	if googleConfigured {
+		if strings.TrimSpace(cfg.GoogleClientID) == "" || strings.TrimSpace(cfg.GoogleClientSecret) == "" || strings.TrimSpace(cfg.GoogleRedirectURL) == "" {
+			return errors.New("HEARD_GOOGLE_CLIENT_ID, HEARD_GOOGLE_CLIENT_SECRET, and HEARD_GOOGLE_REDIRECT_URL must be configured together")
+		}
+		if len(strings.TrimSpace(cfg.PassageProviderConfigurationToken)) < 32 {
+			return errors.New("PASSAGE_PROVIDER_CONFIGURATION_TOKEN must be at least 32 characters when Google sign-in is configured")
+		}
+		redirect, err := url.Parse(strings.TrimSpace(cfg.GoogleRedirectURL))
+		if err != nil || redirect.Host == "" || (redirect.Scheme != "https" && !(cfg.IsLocalRuntime() && redirect.Scheme == "http" && isLoopbackURL(cfg.GoogleRedirectURL))) {
+			return errors.New("HEARD_GOOGLE_REDIRECT_URL must use HTTPS except on local loopback")
+		}
 	}
 	return nil
 }

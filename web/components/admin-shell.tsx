@@ -10,6 +10,7 @@ import { BrandBackdrop } from "./brand-backdrop";
 const navigation: Array<{ href: Route; label: string }> = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/campaigns", label: "Campaigns" },
+  { href: "/admin/settings" as Route, label: "Settings" },
   { href: "/admin/recovery", label: "Recovery" }
 ];
 

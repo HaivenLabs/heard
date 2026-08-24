@@ -187,6 +187,25 @@ export async function availableIdentityProviders(): Promise<string[]> {
   }
 }
 
+export type HeardRegistration = {
+  email: string;
+  password: string;
+  source: "homepage" | "guest_demo" | "direct";
+};
+
+export async function registerHeardAccount(input: HeardRegistration): Promise<{ email: string; verification_delivery: string }> {
+  return apiFetch<{ email: string; verification_delivery: string }>("/api/v1/auth/register", {
+    method: "POST",
+    auth: false,
+    idempotencyKey: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    body: input
+  });
+}
+
+export async function loginHeardAccount(input: { email: string; password: string }): Promise<void> {
+  await apiFetch<{ signed_in: boolean }>("/api/v1/auth/login", { method: "POST", auth: false, body: input });
+}
+
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;

@@ -2,25 +2,46 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useEffect, useState } from "react";
-import { availableIdentityProviders, identityAuthStartUrl, safeReturnTo } from "../../lib/api";
+import { FormEvent, useEffect, useState } from "react";
+import { availableIdentityProviders, identityAuthStartUrl, loginHeardAccount, safeReturnTo } from "../../lib/api";
+import { useRouter } from "next/navigation";
 import { PublicHeader } from "../../components/public-header";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  useEffect(() => { availableIdentityProviders().then(providers => setGoogleAvailable(providers.includes("google"))); }, []);
+  useEffect(() => {
+    availableIdentityProviders().then(providers => setGoogleAvailable(providers.includes("google")));
+    const notice = new URLSearchParams(window.location.search).get("auth_notice");
+    if (notice === "cancelled") setError("Google sign-in was canceled. You can try again whenever you're ready.");
+    if (notice === "provider_error") setError("Google sign-in could not be completed. Please try again.");
+    if (notice === "session_expired") setError("Your sign-in window expired. Please try again.");
+  }, []);
 
-  function continueWithEmail() {
+  async function continueWithEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setBusy(true);
     setError("");
     const next = safeReturnTo(new URLSearchParams(window.location.search).get("next"));
-    window.location.assign(identityAuthStartUrl(next, { intent: "login" }));
+    try {
+      await loginHeardAccount({ email, password });
+      router.replace(next as Route);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not sign you in. Please try again.");
+      setBusy(false);
+    }
   }
 
   function continueWithGoogle() {
+    if (googleAvailable === false) {
+      setError("Google sign-in is temporarily unavailable. Use email and password instead.");
+      return;
+    }
     setBusy(true);
     setError("");
     const next = safeReturnTo(new URLSearchParams(window.location.search).get("next"));
@@ -49,21 +70,15 @@ export default function LoginPage() {
               <h2 className="mt-3 font-display text-3xl tracking-[-0.04em]">Welcome back.</h2>
             </div>
           </div>
-          <p className="mt-4 font-body text-sm leading-6 text-ink/58">
-            {googleAvailable === true ? "Choose Google or sign in securely with your email and password." : "Sign in securely with your email and password."}
-          </p>
-
-          {googleAvailable === true ? (
-            <>
-              <button className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-white px-6 font-display text-sm font-semibold text-ink transition hover:border-clay/50 hover:bg-[#fffdf8] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy} onClick={continueWithGoogle} type="button">
-                <span aria-hidden="true" className="font-body text-lg font-bold text-[#4285f4]">G</span>
-                Continue with Google
-              </button>
-              <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-ink/35"><span className="h-px flex-1 bg-ink/10" />or<span className="h-px flex-1 bg-ink/10" /></div>
-            </>
-          ) : <div className="mt-8" />}
+          <p className="mt-4 font-body text-sm leading-6 text-ink/58">Choose Google or sign in securely with your email and password.</p>
+          <button className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-white px-6 font-display text-sm font-semibold text-ink transition hover:border-clay/50 hover:bg-[#fffdf8] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy} onClick={continueWithGoogle} type="button"><span aria-hidden="true" className="font-body text-lg font-bold text-[#4285f4]">G</span>Continue with Google</button>
+          <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-ink/35"><span className="h-px flex-1 bg-ink/10" />Or sign in with email and password<span className="h-px flex-1 bg-ink/10" /></div>
           {error ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</p> : null}
-          <button className="flex h-14 w-full items-center justify-center rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.04em] text-white transition hover:bg-[#b95635] disabled:cursor-wait disabled:opacity-65" disabled={busy} onClick={continueWithEmail} type="button">Continue with email and password</button>
+          <form className="mt-5" onSubmit={continueWithEmail}>
+            <label className="block"><span className="mb-2 block font-body text-sm font-semibold">Work email</span><input autoComplete="email" className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" name="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@restaurant.com" required type="email" value={email} /></label>
+            <label className="mt-4 block"><span className="mb-2 block font-body text-sm font-semibold">Password</span><input autoComplete="current-password" className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" name="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label>
+            <button className="mt-6 flex h-14 w-full items-center justify-center rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.04em] text-white transition hover:bg-[#b95635] disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">{busy ? "Signing in..." : "Sign in"}</button>
+          </form>
           <p className="mt-6 text-center font-body text-sm leading-6 text-ink/48">New to heard? <Link className="font-semibold text-clay underline decoration-clay/35 underline-offset-4" href={"/start?source=direct" as Route}>Create your account.</Link></p>
         </section>
       </div>

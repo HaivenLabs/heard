@@ -17,10 +17,19 @@ function Onboarding({ session }: { session: Session }) {
   const [state, setState] = useState<OnboardingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
   const [finishedHere, setFinishedHere] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [restaurantHandle, setRestaurantHandle] = useState("");
+  const [handleAvailability, setHandleAvailability] = useState<"checking" | "available" | "taken" | "idle">("idle");
 
   useEffect(() => {
+	if (new URLSearchParams(window.location.search).get("auth_notice") === "google_account_created") {
+	  setAccountNotice("That Google address is new to heard, so we started your account. Add your restaurant to finish setting it up.");
+	}
+	}, []);
+
+	useEffect(() => {
     void apiFetch<OnboardingState>("/api/v1/onboarding")
       .then((next) => {
         if (next.status === "complete") {
@@ -31,6 +40,21 @@ function Onboarding({ session }: { session: Session }) {
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not resume account setup"));
   }, [router]);
+
+  useEffect(() => {
+    const handle = slugify(restaurantHandle);
+    if (handle.length < 2) {
+      setHandleAvailability("idle");
+      return;
+    }
+    setHandleAvailability("checking");
+    const timeout = window.setTimeout(() => {
+      void apiFetch<{ available: boolean }>(`/api/v1/tenant-handles/${encodeURIComponent(handle)}/availability`)
+        .then((result) => setHandleAvailability(result.available ? "available" : "taken"))
+        .catch(() => setHandleAvailability("idle"));
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [restaurantHandle]);
 
   async function activateWorkspace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,6 +71,7 @@ function Onboarding({ session }: { session: Session }) {
         idempotencyKey,
         body: {
           restaurant_name: String(form.get("restaurant_name") ?? ""),
+          restaurant_handle: String(form.get("restaurant_handle") ?? ""),
           location_name: String(form.get("location_name") ?? ""),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Los_Angeles",
           source
@@ -73,7 +98,7 @@ function Onboarding({ session }: { session: Session }) {
         body: {
           tenant_id: state.tenant.id,
           location_id: state.location.id,
-          name: `${state.location.name} guest feedback`,
+          name: String(form.get("campaign_name") ?? ""),
           restaurant_name: state.tenant.name,
           headline: String(form.get("headline") ?? "How did we do?"),
           prompt: "Tap the face that matches your visit.",
@@ -85,7 +110,7 @@ function Onboarding({ session }: { session: Session }) {
         }
       });
       setState({ ...state, campaign, next_step: "feedback_link" });
-      await createCampaignLink(campaign, state);
+      await createCampaignLink(campaign, state, String(form.get("path_slug") ?? ""));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create your first campaign");
     } finally {
@@ -93,7 +118,7 @@ function Onboarding({ session }: { session: Session }) {
     }
   }
 
-  async function createCampaignLink(campaign = state?.campaign, current = state) {
+  async function createCampaignLink(campaign = state?.campaign, current = state, pathSlug = "feedback") {
     if (!campaign || !current?.tenant || !current.location) return;
     setBusy(true);
     setError("");
@@ -107,7 +132,7 @@ function Onboarding({ session }: { session: Session }) {
           campaign_id: campaign.id,
           name: `${campaign.name} link`,
           channel: "onboarding",
-          slug: slugify(current.location.name)
+          slug: slugify(pathSlug)
         }
       });
       setState({ ...current, campaign, feedback_link: feedbackLink, status: "complete", next_step: "complete" });
@@ -149,6 +174,7 @@ function Onboarding({ session }: { session: Session }) {
           <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft sm:p-9">
             {!state && !error ? <div className="space-y-4"><div className="h-8 w-2/3 animate-pulse rounded bg-ink/5" /><div className="h-14 animate-pulse rounded-2xl bg-ink/5" /><div className="h-14 animate-pulse rounded-2xl bg-ink/5" /></div> : null}
             {error ? <p aria-live="assertive" className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error} You can retry without creating duplicates.</p> : null}
+			{accountNotice ? <p aria-live="polite" className="mb-5 rounded-2xl border border-olive/20 bg-olive/10 px-4 py-3 font-body text-sm leading-6 text-ink/70">{accountNotice}</p> : null}
 
             {state && step === "workspace" ? (
               <form onSubmit={activateWorkspace}>
@@ -159,6 +185,14 @@ function Onboarding({ session }: { session: Session }) {
                   <Field label="Restaurant name" name="restaurant_name" placeholder="Cedar & Salt" />
                   <Field label="First location" name="location_name" placeholder="Downtown" />
                 </div>
+                <label className="mt-4 block">
+                  <span className="mb-2 block font-body text-sm font-semibold">Your public restaurant handle</span>
+                  <div className="flex items-center rounded-2xl border border-ink/15 bg-white px-4 focus-within:border-clay focus-within:ring-4 focus-within:ring-clay/10">
+                    <span className="font-mono text-sm text-ink/45">/f/</span>
+                    <input className="h-14 min-w-0 flex-1 bg-transparent px-1 font-body outline-none" name="restaurant_handle" onChange={(event) => setRestaurantHandle(event.target.value)} placeholder="cedar-and-salt" required value={restaurantHandle} />
+                  </div>
+                  <p aria-live="polite" className={`mt-2 font-body text-xs ${handleAvailability === "taken" ? "text-red-700" : handleAvailability === "available" ? "text-olive" : "text-ink/48"}`}>{handleAvailability === "checking" ? "Checking availability…" : handleAvailability === "available" ? `/${slugify(restaurantHandle)} is available.` : handleAvailability === "taken" ? `/${slugify(restaurantHandle)} is already in use. Choose another.` : "This is your restaurant’s unique public link prefix. You can change it later."}</p>
+                </label>
                 <button className="mt-7 h-14 w-full rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:bg-[#b95635] disabled:opacity-60" disabled={busy} type="submit">{busy ? "Preparing your workspace..." : "Continue to your campaign"}</button>
               </form>
             ) : null}
@@ -168,8 +202,8 @@ function Onboarding({ session }: { session: Session }) {
                 <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-olive">Step 2 of 3</p>
                 <h2 className="mt-3 font-display text-3xl tracking-[-0.04em]">Give your first campaign a headline.</h2>
                 <p className="mt-3 font-body text-sm leading-6 text-ink/55">We&apos;ve filled in the rest with a short, proven guest experience. Everything stays editable later.</p>
-                <div className="mt-7"><Field defaultValue="How did we do?" label="Guest-facing headline" name="headline" placeholder="How did we do?" /></div>
-                <div className="mt-5 rounded-2xl bg-[#f5efe6] p-5 font-body text-sm leading-6 text-ink/58"><strong className="text-ink">{state.tenant?.name}</strong><br />{state.location?.name} · Five-face feedback survey<br /><span className="text-xs text-ink/48">Your heard handle: /f/{state.tenant?.slug ?? "your-restaurant"}/</span></div>
+                <div className="mt-7 grid gap-4"><Field defaultValue="Guest feedback" label="Campaign name (for your team)" name="campaign_name" placeholder="Takeout feedback" /><Field defaultValue="How did we do?" label="Guest-facing headline" name="headline" placeholder="How did we do?" /><Field defaultValue="feedback" label="Guest link path" name="path_slug" placeholder="takeout" /></div>
+                <div className="mt-5 rounded-2xl bg-[#f5efe6] p-5 font-body text-sm leading-6 text-ink/58"><strong className="text-ink">{state.tenant?.name}</strong><br />{state.location?.name} · Five-face feedback survey<br /><span className="text-xs text-ink/48">Your public link will start with /f/{state.tenant?.slug ?? "your-restaurant"}/ followed by the path you choose.</span></div>
                 <button className="mt-7 h-14 w-full rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.06em] text-white transition hover:bg-[#b95635] disabled:opacity-60" disabled={busy} type="submit">{busy ? "Creating your campaign..." : "Create feedback campaign"}</button>
               </form>
             ) : null}

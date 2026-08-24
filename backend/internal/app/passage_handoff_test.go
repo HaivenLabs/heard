@@ -116,6 +116,56 @@ func TestPassageCallbackRejectsStateMismatchWithoutExchange(t *testing.T) {
 	}
 }
 
+func TestPassageCallbackRecoversExpiredProviderSessionWithoutState(t *testing.T) {
+	s := NewServer(Config{AppEnv: "test", WebBaseURL: "http://heard.test"}, nil, stubIdentityProvider{})
+	rec := httptest.NewRecorder()
+	s.handlePassageCallback(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback?error=provider_session_expired", nil))
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://heard.test/login?auth_notice=session_expired" {
+		t.Fatalf("expired provider session status=%d location=%s", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestPassageCallbackRedirectsProviderErrorsToBrandedAuthPages(t *testing.T) {
+	tests := []struct {
+		name, providerError, intent, destination string
+		startsRegistration                       bool
+	}{
+		{"login canceled", "access_denied", "login", "http://heard.test/login?auth_notice=cancelled", false},
+		{"signup canceled", "access_denied", "register", "http://heard.test/start?auth_notice=cancelled", false},
+		{"unknown login continues into Google registration", "identity_not_registered", "login", "", true},
+		{"provider failure", "provider_failed", "login", "http://heard.test/login?auth_notice=provider_error", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s := NewServer(Config{AppEnv: "test", WebBaseURL: "http://heard.test"}, nil, stubIdentityProvider{})
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback?error="+url.QueryEscape(test.providerError)+"&state=expected", nil)
+			for _, cookie := range []*http.Cookie{
+				{Name: "heard_oauth_state", Value: "expected"},
+				{Name: "heard_oauth_verifier", Value: strings.Repeat("v", 43)},
+				{Name: "heard_oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte("/admin"))},
+				{Name: "heard_oauth_intent", Value: test.intent},
+			} {
+				req.AddCookie(cookie)
+			}
+			rec := httptest.NewRecorder()
+			s.handlePassageCallback(rec, req)
+			if rec.Code != http.StatusFound {
+				t.Fatalf("status=%d location=%s", rec.Code, rec.Header().Get("Location"))
+			}
+			if test.startsRegistration {
+				destination, err := url.Parse(rec.Header().Get("Location"))
+				if err != nil || destination.Path != "/api/v1/auth/start" || destination.Query().Get("provider") != "google" || destination.Query().Get("intent") != "register" || destination.Query().Get("return_to") != "/onboarding?auth_notice=google_account_created" {
+					t.Fatalf("registration continuation=%s", rec.Header().Get("Location"))
+				}
+				return
+			}
+			if rec.Header().Get("Location") != test.destination {
+				t.Fatalf("status=%d location=%s", rec.Code, rec.Header().Get("Location"))
+			}
+		})
+	}
+}
+
 func TestPassageStartRejectsOpenReturnRedirect(t *testing.T) {
 	s := NewServer(Config{AppEnv: "test", PassageBaseURL: "http://passage.test", PassageCallbackURL: "http://heard.test/api/v1/auth/callback", PassageClientID: "heard", WebBaseURL: "http://heard.test"}, nil, stubIdentityProvider{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/start?return_to=https%3A%2F%2Fevil.example%2Fpwn", nil)
@@ -157,21 +207,21 @@ func TestGoogleHandoffSkipsPassageUIAndPreservesHeardPKCE(t *testing.T) {
 	}
 }
 
-func TestRegistrationHandoffRequiresWorkspaceDetails(t *testing.T) {
+func TestRegistrationHandoffDefersWorkspaceDetailsUntilOnboarding(t *testing.T) {
 	s := NewServer(Config{AppEnv: "test", PassageBaseURL: "http://identity.internal", PassagePublicURL: "https://auth.heard.example", PassageCallbackURL: "https://heard.example/api/v1/auth/callback", PassageClientID: "heard", WebBaseURL: "https://heard.example"}, nil, stubIdentityProvider{})
 
-	for _, target := range []string{
-		"/api/v1/auth/start?provider=google&intent=register&location_name=Downtown",
-		"/api/v1/auth/start?provider=google&intent=register&organization_name=Cedar%20Cafe",
-	} {
-		rec := httptest.NewRecorder()
-		s.handlePassageStart(rec, httptest.NewRequest(http.MethodGet, target, nil))
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s status=%d, want %d", target, rec.Code, http.StatusBadRequest)
-		}
-		if rec.Header().Get("Location") != "" {
-			t.Fatalf("incomplete registration redirected to identity provider: %s", rec.Header().Get("Location"))
-		}
+	rec := httptest.NewRecorder()
+	s.handlePassageStart(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/start?provider=google&intent=register&return_to=%2Fonboarding", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("registration start status=%d", rec.Code)
+	}
+	destination, err := url.Parse(rec.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	continuation, err := url.Parse(destination.Query().Get("return_to"))
+	if err != nil || continuation.Query().Get("organization_name") != "Heard workspace" {
+		t.Fatalf("registration did not use a neutral workspace context: %s", destination)
 	}
 }
 
@@ -189,6 +239,85 @@ func TestIdentityProvidersExposeOnlyConfiguredConsumerMethods(t *testing.T) {
 	s.handleIdentityProviders(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"providers":["google"]}` {
 		t.Fatalf("provider discovery status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHeardRegistrationForwardsOnlyIdentityCredentials(t *testing.T) {
+	var received map[string]string
+	identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/auth/register" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Idempotency-Key") == "" {
+			http.Error(w, "missing idempotency key", http.StatusBadRequest)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			http.Error(w, "invalid body", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"email": received["email"], "verification_delivery": "requested"})
+	}))
+	defer identity.Close()
+
+	s := NewServer(Config{AppEnv: "test", PassageBaseURL: identity.URL, PassageClientID: "heard"}, nil, stubIdentityProvider{})
+	s.limiter = nil
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"owner@example.com","password":"a secure password","source":"homepage"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated || received["email"] != "owner@example.com" || received["password"] != "a secure password" || len(received) != 2 {
+		t.Fatalf("registration status=%d received=%#v", rec.Code, received)
+	}
+}
+
+func TestHeardLoginExchangesIdentitySessionForHeardCookie(t *testing.T) {
+	identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/auth/login":
+			var received map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&received); err != nil || received["email"] != "owner@example.com" || received["password"] != "a secure password" {
+				http.Error(w, "invalid login", http.StatusBadRequest)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "passage_session", Value: "identity-session", Path: "/", HttpOnly: true})
+			http.SetCookie(w, &http.Cookie{Name: "passage_csrf", Value: "identity-csrf", Path: "/", HttpOnly: true})
+			w.WriteHeader(http.StatusOK)
+		case "/api/v1/product-token":
+			if !strings.Contains(r.Header.Get("Cookie"), "passage_session=identity-session") || r.Header.Get("X-CSRF-Token") != "identity-csrf" {
+				http.Error(w, "missing identity session", http.StatusUnauthorized)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"access_token": "heard-token", "token_type": "Bearer", "expires_in": 300})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer identity.Close()
+
+	s := NewServer(Config{AppEnv: "test", PassageBaseURL: identity.URL, PassageClientID: "heard"}, nil, stubIdentityProvider{})
+	s.limiter = nil
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"owner@example.com","password":"a secure password"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"signed_in":true}` {
+		t.Fatalf("login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var heardSession *http.Cookie
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "passage_session" || cookie.Name == "passage_csrf" {
+			t.Fatalf("identity cookie leaked to browser: %#v", cookie)
+		}
+		if cookie.Name == "heard_session" {
+			heardSession = cookie
+		}
+	}
+	if heardSession == nil || heardSession.Value != "heard-token" || !heardSession.HttpOnly || heardSession.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("unsafe heard session: %#v", heardSession)
 	}
 }
 

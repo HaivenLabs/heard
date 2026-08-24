@@ -40,9 +40,10 @@ func TestOnboardingActivationIsIdempotentUnderConcurrency(t *testing.T) {
 		go func(index int) {
 			defer wait.Done()
 			state, err := store.ActivateRestaurantWorkspace(ctx, session.Identity, "owner", fmt.Sprintf("retry-key-%03d", index), createOnboardingActivationRequest{
-				RestaurantName: "Concurrency Cafe",
-				LocationName:   "First Location",
-				Source:         "direct",
+				RestaurantName:   "Concurrency Cafe",
+				RestaurantHandle: "concurrency-cafe",
+				LocationName:     "First Location",
+				Source:           "direct",
 			})
 			if err != nil {
 				errorsCh <- err
@@ -109,7 +110,7 @@ func TestOnboardingNeverLeaksWorkspaceAcrossEmails(t *testing.T) {
 	}
 	defer store.pool.Exec(ctx, `delete from tenants where id in ($1,$2)`, first.TenantID, second.TenantID)
 
-	created, err := store.ActivateRestaurantWorkspace(ctx, first.Identity, "owner", "first-workspace-key", createOnboardingActivationRequest{RestaurantName: "First Cafe", LocationName: "Downtown", Source: "direct"})
+	created, err := store.ActivateRestaurantWorkspace(ctx, first.Identity, "owner", "first-workspace-key", createOnboardingActivationRequest{RestaurantName: "First Cafe", RestaurantHandle: "first-cafe", LocationName: "Downtown", Source: "direct"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,5 +123,100 @@ func TestOnboardingNeverLeaksWorkspaceAcrossEmails(t *testing.T) {
 	}
 	if secondState.Tenant != nil || secondState.Status == "complete" || secondState.NextStep != "workspace" {
 		t.Fatalf("second email inherited another workspace: %#v", secondState)
+	}
+}
+
+func TestSurveyCampaignUpdateIsTenantScopedAndPreservesIdentity(t *testing.T) {
+	databaseURL := os.Getenv("HEARD_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set HEARD_TEST_DATABASE_URL to run PostgreSQL campaign integration tests")
+	}
+	ctx := context.Background()
+	store, err := NewStore(ctx, Config{DatabaseURL: databaseURL, WebBaseURL: "http://heard.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.RunMigrations(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := newLocalPassageProvider("integration-secret", time.Now)
+	session, err := provider.IssueRegistration(fmt.Sprintf("campaign-update-%d@heard.test", time.Now().UnixNano()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.pool.Exec(ctx, `delete from tenants where id = $1`, session.TenantID)
+	state, err := store.ActivateRestaurantWorkspace(ctx, session.Identity, "owner", "campaign-update-key", createOnboardingActivationRequest{
+		RestaurantName:   "Editable Cafe",
+		RestaurantHandle: "editable-cafe",
+		LocationName:     "Main Street",
+		Source:           "direct",
+	})
+	if err != nil || state.Location == nil {
+		t.Fatalf("activate workspace: state=%#v err=%v", state, err)
+	}
+	created, err := store.CreateSurveyCampaign(ctx, session.TenantID, session.Identity.UserID, "owner", createSurveyCampaignRequest{
+		TenantID:       session.TenantID,
+		LocationID:     state.Location.ID,
+		Name:           "Lunch feedback",
+		RestaurantName: "Editable Cafe",
+		Headline:       "How was lunch?",
+		Prompt:         "Tell us about it.",
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+	link, err := store.CreateFeedbackLink(ctx, session.TenantID, session.Identity.UserID, "owner", createFeedbackLinkRequest{
+		TenantID: session.TenantID, LocationID: state.Location.ID, CampaignID: created.ID, Name: "Lunch flyer", Channel: "flyer", Slug: "lunch-feedback",
+	})
+	if err != nil {
+		t.Fatalf("create feedback link: %v", err)
+	}
+	secondLocation, err := store.CreateLocation(ctx, session.TenantID, session.Identity.UserID, "owner", createLocationRequest{TenantID: session.TenantID, Name: "Harbor", Slug: "harbor"})
+	if err != nil {
+		t.Fatalf("create second location: %v", err)
+	}
+
+	updated, err := store.UpdateSurveyCampaign(ctx, session.TenantID, session.Identity.UserID, "owner", created.ID, updateSurveyCampaignRequest{
+		LocationID:      secondLocation.ID,
+		Name:            "Dinner feedback",
+		RestaurantName:  "Editable Cafe",
+		Headline:        "How was dinner?",
+		Prompt:          "Tell us about your dinner.",
+		IncentiveText:   "Share feedback for a chance to win.",
+		SMSKeyword:      "DINNER",
+		SMSPhone:        "(555) 010-0123",
+		GoogleReviewURL: "https://example.com/google",
+		YelpReviewURL:   "https://example.com/yelp",
+	})
+	if err != nil {
+		t.Fatalf("update campaign: %v", err)
+	}
+	if updated.ID != created.ID || updated.Name != "Dinner feedback" || updated.Headline != "How was dinner?" || updated.SMSKeyword != "DINNER" {
+		t.Fatalf("campaign update did not preserve identity and apply fields: %#v", updated)
+	}
+	stored, err := store.GetSurveyCampaign(ctx, session.TenantID, created.ID)
+	if err != nil || stored.Prompt != "Tell us about your dinner." {
+		t.Fatalf("updated campaign was not persisted: campaign=%#v err=%v", stored, err)
+	}
+	updatedLink, err := store.ResolveFeedbackLinkByID(ctx, session.TenantID, link.ID)
+	if err != nil || updatedLink.LocationID != secondLocation.ID {
+		t.Fatalf("campaign link did not move with the campaign: link=%#v err=%v", updatedLink, err)
+	}
+	if _, err := store.UpdateSurveyCampaign(ctx, "22222222-2222-2222-2222-222222222222", session.Identity.UserID, "owner", created.ID, updateSurveyCampaignRequest{
+		LocationID: state.Location.ID, Name: "Blocked", RestaurantName: "Blocked", Headline: "Blocked", Prompt: "Blocked",
+	}); err == nil {
+		t.Fatal("expected cross-tenant campaign update to fail")
+	}
+	if _, available, err := store.TenantHandleAvailability(ctx, "editable-cafe-new"); err != nil || !available {
+		t.Fatalf("expected candidate handle to be available: available=%t err=%v", available, err)
+	}
+	updatedTenant, err := store.UpdateTenantHandle(ctx, session.TenantID, session.Identity.UserID, "owner", "editable-cafe-new")
+	if err != nil || updatedTenant.Slug != "editable-cafe-new" {
+		t.Fatalf("update tenant handle: tenant=%#v err=%v", updatedTenant, err)
+	}
+	if _, available, err := store.TenantHandleAvailability(ctx, "editable-cafe-new"); err != nil || available {
+		t.Fatalf("expected claimed handle to be unavailable: available=%t err=%v", available, err)
 	}
 }

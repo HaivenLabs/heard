@@ -142,7 +142,7 @@ func (p *localPassageProvider) issueSession(rawEmail, tenantID string) (Session,
 		DisplayName: displayNameFromEmail(email),
 		Role:        "owner",
 		TenantIDs:   []string{tenantID},
-		Permissions: []string{"tenant:read", "tenant:create", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"},
+		Permissions: []string{"tenant:read", "tenant:create", "tenant:write", "location:read", "location:write", "campaign:read", "campaign:write", "recovery:read", "recovery:write", "outbox:replay"},
 		Provider:    "passage-local",
 	}
 	claims := localPassageClaims{

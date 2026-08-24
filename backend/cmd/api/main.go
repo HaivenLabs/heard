@@ -18,6 +18,9 @@ func main() {
 		log.Fatalf("invalid runtime configuration: %v", err)
 	}
 	ctx := context.Background()
+	if err := app.ConfigurePassageGoogle(ctx, cfg, &http.Client{Timeout: 10 * time.Second}); err != nil {
+		log.Fatalf("configure Google sign-in: %v", err)
+	}
 
 	store, err := app.NewStore(ctx, cfg)
 	if err != nil {

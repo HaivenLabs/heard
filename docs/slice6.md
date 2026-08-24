@@ -21,8 +21,10 @@ As a restaurant operator new to heard, I can create my account, set up my restau
 - Passage-owned registration, authentication, session, and account recovery integration.
 - Idempotent creation of the first heard tenant, owner membership, restaurant profile, and location after Passage resolves identity.
 - A short onboarding sequence that asks only for information required to create the first campaign.
+- During setup, the operator chooses a unique public restaurant handle and the first campaign's internal name and public link path; handles are never silently suffixed after a collision.
 - Sensible defaults and progressive disclosure for optional restaurant, survey, and branding configuration.
 - Direct handoff into campaign creation, followed by a clear next action to publish, copy the feedback link, or obtain the qurl-backed QR asset.
+- Tenant-authorized operators can reopen an existing campaign from the dashboard, update its guest-facing copy and location, and preserve its existing flyer link and QR destination.
 - Resumable onboarding when account, tenant, location, or campaign creation is interrupted.
 - A useful empty state for authenticated accounts that have not completed workspace activation.
 - Source attribution from the public entry point without requiring a marketing-lead form.
@@ -73,11 +75,13 @@ Activation state and outbox records must be committed atomically where downstrea
 ## Failure modes
 
 - Passage is unavailable: preserve safe progress, explain that account setup cannot currently continue, and allow retry.
+- Google cancellation returns to the originating Heard sign-in or signup page with a friendly notice; an unknown Google identity during sign-in is offered explicit account creation without silently provisioning it.
 - Workspace or location creation fails: return a structured error and resume from the incomplete step without duplication.
 - qurl is unavailable: finish campaign creation, expose the feedback link, and clearly mark QR generation as temporarily unavailable.
 - The operator leaves midway: resume at the first incomplete step after the next authenticated visit.
 - An already activated operator follows a start CTA: send them to their workspace or first useful campaign action instead of restarting onboarding.
 - Billing is not configured: do not block initial product use behind an invented local subscription check.
+- A requested restaurant handle is already taken: show that outcome before submission when possible and reject the activation safely if another operator claims it first.
 
 ## Observability
 
