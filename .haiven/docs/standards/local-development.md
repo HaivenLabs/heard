@@ -62,6 +62,19 @@ Products should support:
 - direct app/backend runs where useful
 - clear commands for both paths
 
+## Canonical browser origins
+
+Every browser-facing product declares one canonical external application origin for each environment. This is an identity and deployment contract, not a UI preference.
+
+| Environment | Canonical origin rule |
+| --- | --- |
+| Local | Use one documented loopback origin, such as `http://localhost:3010`; redirect aliases such as `127.0.0.1` before cookies are created. |
+| Integration | Configure that environment's explicit HTTPS product hostname. |
+| Staging | Configure that environment's explicit HTTPS product hostname. |
+| Production | Configure the production HTTPS product hostname. |
+
+The application must derive or reject drift among its public URL, CORS allow-origin, OAuth callback, branded recovery redirect, and cookie scope. OAuth providers must register the exact callback for each environment's canonical origin. Never derive an OAuth callback from an untrusted request host. Promote the same source through environments by changing deployment configuration and registered provider callbacks, not code.
+
 ## CI parity
 
 Local checks should approximate CI.

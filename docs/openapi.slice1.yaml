@@ -25,6 +25,10 @@ paths:
       responses:
         "200":
           description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
   /api/v1/marketing-leads:
     post:
       summary: Request a heard product conversation
@@ -159,8 +163,6 @@ paths:
         - {name: error, in: query, required: false, schema: {type: string}}
       responses:
         "302": {description: Secure Heard browser session established, or provider cancellation/failure returned to a branded Heard auth page}
-        "400": {description: State or authorization code is invalid or expired}
-        "503": {description: Identity service unavailable}
   /api/v1/session:
     get:
       summary: Resolve the current Passage identity
@@ -806,6 +808,30 @@ components:
         type: string
         format: uuid
   schemas:
+    HealthResponse:
+      type: object
+      required: [status, dependencies]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        dependencies:
+          type: object
+          required: [identity]
+          properties:
+            identity:
+              $ref: "#/components/schemas/IdentityDependencyHealth"
+    IdentityDependencyHealth:
+      type: object
+      required: [status, last_refresh_failed]
+      properties:
+        status:
+          type: string
+          enum: [operational, degraded, unavailable, unknown]
+        cached_key_count: { type: integer, minimum: 0 }
+        fresh_until: { type: string, format: date-time }
+        stale_until: { type: string, format: date-time }
+        last_refresh_failed: { type: boolean }
     ErrorResponse:
       type: object
       required: [error]
@@ -936,7 +962,7 @@ components:
         created_at: { type: string, format: date-time }
     SurveyCampaign:
       type: object
-      required: [id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text, sms_keyword, sms_phone, google_review_url, yelp_review_url, status, created_at]
+      required: [id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text, sms_keyword, sms_phone, google_review_url, yelp_review_url, rating_face_set, status, created_at]
       properties:
         id: { type: string, format: uuid }
         tenant_id: { type: string, format: uuid }
@@ -950,6 +976,12 @@ components:
         sms_phone: { type: string }
         google_review_url: { type: string, format: uri }
         yelp_review_url: { type: string, format: uri }
+        logo_url: { type: string }
+        theme: { type: string }
+        rating_face_set:
+          type: string
+          enum: [heard, clay, glass, minimal, retro]
+          description: Product-owned SVG rating-face set rendered in campaign previews and the public guest survey.
         status: { type: string }
         created_at: { type: string, format: date-time }
     PublicSurvey:
@@ -1081,6 +1113,10 @@ components:
         yelp_review_url: { type: string, format: uri }
         logo_url: { type: string }
         theme: { type: string }
+        rating_face_set:
+          type: string
+          enum: [heard, clay, glass, minimal, retro]
+          default: heard
     UpdateSurveyCampaignRequest:
       type: object
       additionalProperties: false
@@ -1098,6 +1134,9 @@ components:
         yelp_review_url: { type: string, format: uri }
         logo_url: { type: string }
         theme: { type: string }
+        rating_face_set:
+          type: string
+          enum: [heard, clay, glass, minimal, retro]
     CreateFeedbackLinkRequest:
       type: object
       required: [tenant_id, location_id]

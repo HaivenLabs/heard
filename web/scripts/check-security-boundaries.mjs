@@ -6,6 +6,7 @@ const proxy = readFileSync(new URL("../app/api/[...path]/route.ts", import.meta.
 const nextConfig = readFileSync(new URL("../next.config.mjs", import.meta.url), "utf8");
 const api = readFileSync(new URL("../lib/api.ts", import.meta.url), "utf8");
 const compose = readFileSync(new URL("../../docker-compose.yml", import.meta.url), "utf8");
+const { contentSecurityPolicy } = await import("../next.config.mjs");
 
 assert.doesNotMatch(campaign, /dangerouslySetInnerHTML/, "qurl provider markup must never be injected into the admin DOM");
 assert.match(campaign, /qr_asset_url/, "campaign QR preview must consume the isolated image asset");
@@ -13,6 +14,8 @@ assert.doesNotMatch(proxy, /request\.arrayBuffer\(\)/, "the API gateway must not
 assert.match(proxy, /MAX_PROXY_REQUEST_BODY_BYTES/, "the API gateway must enforce a request body bound");
 assert.match(nextConfig, /object-src 'none'/, "CSP must prohibit active object content");
 assert.match(nextConfig, /frame-ancestors 'none'/, "CSP must prevent framing of authenticated surfaces");
+assert.match(contentSecurityPolicy("development"), /script-src[^;]*'unsafe-eval'/, "local development CSP must allow Next React Refresh to hydrate interactive controls");
+assert.doesNotMatch(contentSecurityPolicy("production"), /'unsafe-eval'/, "production CSP must prohibit unsafe script evaluation");
 assert.match(api, /NEXT_PUBLIC_PASSAGE_MODE !== "local"/, "local browser tokens must require an explicit local Passage mode opt-in");
 assert.match(compose, /PASSAGE_MODE:-jwks/, "Docker must use the real Passage boundary instead of the passwordless local adapter");
 assert.match(compose, /HEARD_BIND_ADDRESS:-127\.0\.0\.1/, "local Compose services must bind to loopback by default");

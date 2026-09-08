@@ -200,6 +200,21 @@ Default seeded tenant header:
 
 Production browser entry starts at the provider-neutral `GET /api/v1/auth/start`. Heard exposes native Sign in with Google and Sign up with Google controls while Passage owns the Google OIDC exchange behind that Heard contract. Registration carries a short-lived Heard-owned onboarding draft so Passage can return the verified identity directly to Heard and Heard can atomically activate the named restaurant and first location without exposing Passage UI. Heard stores PKCE verifier, state, return path, and registration draft in short-lived HttpOnly cookies; Passage returns a single-use authorization code; Heard exchanges it server-side using `PASSAGE_CLIENT_ID` and the exact registered `PASSAGE_CALLBACK_URL`. The product JWT is verified and kept only in the Secure/HttpOnly `heard_session` cookie. It is never placed in a browser URL or local storage.
 
+### Canonical browser origin and deployment promotion
+
+`PUBLIC_APP_URL` is the single canonical browser origin for a Heard deployment. The API derives its CORS allow-origin, branded return origin, and OAuth callback (`${PUBLIC_APP_URL}/api/v1/auth/callback`) from that value and refuses startup if those values drift. The web gateway redirects every alternate host to the canonical origin before it can issue an OAuth, PKCE, state, CSRF, or session cookie. This prevents a browser from beginning sign-in on one host and returning to a different host with an empty cookie jar.
+
+| Environment | Required canonical configuration |
+| --- | --- |
+| Local Docker | `PUBLIC_APP_URL=http://localhost:3010`; `127.0.0.1:3010` redirects to `localhost`. |
+| Integration | Set `PUBLIC_APP_URL` to that environment's explicit HTTPS Heard hostname and register the derived exact callback in Passage. |
+| Staging | Set `PUBLIC_APP_URL` to the staging HTTPS Heard hostname and register the derived exact callback in Passage. |
+| Production | Set `PUBLIC_APP_URL` to the production HTTPS Heard hostname and register the derived exact callback in Passage. |
+
+Promote the same source through those environments by changing deployment configuration and registered provider callbacks only. Do not ship host-specific source changes, accept multiple cookie origins, or derive callback URLs from an inbound Host header.
+
+If the shared identity service is unavailable, guest feedback routes remain available. Heard can continue verifying an already-issued, unexpired session against a previously fetched signing key for the bounded `PASSAGE_JWKS_STALE_SECONDS` window (15 minutes by default), including after an API restart because only the public signing-key cache is persisted. It never accepts unknown keys, changed signatures, or expired tokens during an outage. New account and sign-in attempts return to Heard with a retry message. `GET /api/v1/healthz` reports this generic dependency as degraded so operators can alert without removing the public product from service.
+
 `PASSAGE_PUBLIC_URL` is the browser-visible identity origin used only for authorization redirects (local combined-stack default `http://localhost:3020`). In production it must be a Heard-owned custom auth domain with Heard-branded Google credentials and consent screen; do not expose a Passage hostname or Passage branding. `PASSAGE_BASE_URL` remains the backend-reachable origin used for token exchange and JWKS. If `PASSAGE_PUBLIC_URL` is unset it falls back to `PASSAGE_BASE_URL` for compatibility. Never configure a Docker-only hostname such as `host.docker.internal` as the public URL because the browser must send the identity origin's session cookie.
 
 Heard owns its Google OAuth client ID and secret. When those values are set,
@@ -227,4 +242,5 @@ Reference docs:
 - [Slice 4 branded guest experience](./docs/slice4.md)
 - [Slice 5 optional walkthrough](./docs/slice5.md)
 - [Slice 6 self-service onboarding](./docs/slice6.md)
+- [Heard brand theme](./docs/brand.md)
 - [Slice 1 OpenAPI contract](./docs/openapi.slice1.yaml)

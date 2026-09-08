@@ -162,6 +162,22 @@ func TestSentimentFromRating(t *testing.T) {
 	}
 }
 
+func TestNormalizeRatingFaceSet(t *testing.T) {
+	for _, value := range []string{"heard", "clay", "glass", "minimal", "retro"} {
+		got, err := normalizeRatingFaceSet(value)
+		if err != nil || got != value {
+			t.Fatalf("normalize %q: got %q err=%v", value, got, err)
+		}
+	}
+	got, err := normalizeRatingFaceSet("")
+	if err != nil || got != "heard" {
+		t.Fatalf("empty set should default to heard: got %q err=%v", got, err)
+	}
+	if _, err := normalizeRatingFaceSet("ios"); err == nil {
+		t.Fatal("expected unsupported rating face set to fail")
+	}
+}
+
 func TestShouldCreateRecoveryCase(t *testing.T) {
 	if !shouldCreateRecoveryCase(1, "") {
 		t.Fatal("expected rating 1 to create a recovery case")

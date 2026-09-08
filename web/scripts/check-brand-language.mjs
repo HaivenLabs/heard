@@ -22,7 +22,7 @@ for (const source of [login, start]) {
 
 assert.match(home, /<h1[^>]*>The guest experience, in your hands<\/h1>/);
 assert.match(walkthrough, /<h1[^>]*>Built for restaurant operators, by restaurant operators\.<\/h1>/);
-assert.doesNotMatch(walkthrough, /bg-\[#17251d\]/);
+assert.doesNotMatch(walkthrough, /bg-\[#[^\]]+\]/);
 assert.doesNotMatch(walkthrough, /function Outcome/);
 assert.doesNotMatch(walkthrough, /guest demo again/i);
 assert.match(walkthrough, />Try guest experience<\/Link>/);

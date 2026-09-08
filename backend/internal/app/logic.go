@@ -25,6 +25,19 @@ func validationError(message string) error {
 	return fmt.Errorf("%w: %s", errValidation, message)
 }
 
+func normalizeRatingFaceSet(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "heard", nil
+	}
+	switch value {
+	case "heard", "clay", "glass", "minimal", "retro":
+		return value, nil
+	default:
+		return "", validationError("rating face set is not supported")
+	}
+}
+
 func validateContactDetails(email, phone string, required bool) error {
 	email = strings.TrimSpace(email)
 	phone = strings.TrimSpace(phone)

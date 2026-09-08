@@ -189,16 +189,23 @@ func TestSurveyCampaignUpdateIsTenantScopedAndPreservesIdentity(t *testing.T) {
 		SMSPhone:        "(555) 010-0123",
 		GoogleReviewURL: "https://example.com/google",
 		YelpReviewURL:   "https://example.com/yelp",
+		RatingFaceSet:   "retro",
 	})
 	if err != nil {
 		t.Fatalf("update campaign: %v", err)
 	}
-	if updated.ID != created.ID || updated.Name != "Dinner feedback" || updated.Headline != "How was dinner?" || updated.SMSKeyword != "DINNER" {
+	if updated.ID != created.ID || updated.Name != "Dinner feedback" || updated.Headline != "How was dinner?" || updated.SMSKeyword != "DINNER" || updated.RatingFaceSet != "retro" {
 		t.Fatalf("campaign update did not preserve identity and apply fields: %#v", updated)
 	}
 	stored, err := store.GetSurveyCampaign(ctx, session.TenantID, created.ID)
-	if err != nil || stored.Prompt != "Tell us about your dinner." {
+	if err != nil || stored.Prompt != "Tell us about your dinner." || stored.RatingFaceSet != "retro" {
 		t.Fatalf("updated campaign was not persisted: campaign=%#v err=%v", stored, err)
+	}
+	preserved, err := store.UpdateSurveyCampaign(ctx, session.TenantID, session.Identity.UserID, "owner", created.ID, updateSurveyCampaignRequest{
+		LocationID: secondLocation.ID, Name: "Dinner feedback", RestaurantName: "Editable Cafe", Headline: "How was dinner?", Prompt: "Tell us about your dinner.",
+	})
+	if err != nil || preserved.RatingFaceSet != "retro" {
+		t.Fatalf("omitted rating face set should preserve the campaign choice: campaign=%#v err=%v", preserved, err)
 	}
 	updatedLink, err := store.ResolveFeedbackLinkByID(ctx, session.TenantID, link.ID)
 	if err != nil || updatedLink.LocationID != secondLocation.ID {

@@ -45,6 +45,43 @@ func (s *Store) Close() {
 	s.pool.Close()
 }
 
+func (s *Store) LoadIdentityJWKS(ctx context.Context, issuer string) (IdentityJWKSCacheRecord, bool, error) {
+	var record IdentityJWKSCacheRecord
+	var rawKeys []byte
+	err := s.pool.QueryRow(ctx, `
+		select issuer, keys, fresh_until, stale_until
+		from identity_jwks_cache
+		where issuer = $1
+	`, issuer).Scan(&record.Issuer, &rawKeys, &record.FreshUntil, &record.StaleUntil)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return IdentityJWKSCacheRecord{}, false, nil
+	}
+	if err != nil {
+		return IdentityJWKSCacheRecord{}, false, err
+	}
+	if err := json.Unmarshal(rawKeys, &record.Keys); err != nil {
+		return IdentityJWKSCacheRecord{}, false, err
+	}
+	return record, true, nil
+}
+
+func (s *Store) SaveIdentityJWKS(ctx context.Context, record IdentityJWKSCacheRecord) error {
+	rawKeys, err := json.Marshal(record.Keys)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		insert into identity_jwks_cache (issuer, keys, fresh_until, stale_until)
+		values ($1, $2, $3, $4)
+		on conflict (issuer) do update set
+			keys = excluded.keys,
+			fresh_until = excluded.fresh_until,
+			stale_until = excluded.stale_until,
+			updated_at = now()
+	`, record.Issuer, rawKeys, record.FreshUntil, record.StaleUntil)
+	return err
+}
+
 func (s *Store) SeedDemoData(ctx context.Context) error {
 	if !s.cfg.DemoSeedEnabled {
 		return nil
@@ -67,12 +104,12 @@ func (s *Store) SeedDemoData(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, `
 		insert into survey_campaigns (
 			id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, rating_face_set, status
 		)
 		values (
 			$1, $2, $3, 'Takeout bag gift card survey', 'nom', 'How did we do?',
 			'Tap the face that matches your visit.', 'Complete this survey for a chance to win a $100 nom gift card.',
-			'WIN', '(877) 426-0492', $4, $5, '/brands/nom/logo.png', 'teal', 'active'
+			'WIN', '(877) 426-0492', $4, $5, '/brands/nom/logo.png', 'teal', 'heard', 'active'
 		)
 		on conflict (id) do update set
 			restaurant_name = excluded.restaurant_name,
@@ -461,6 +498,10 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 	if _, err := s.GetLocation(ctx, tenantID, req.LocationID); err != nil {
 		return SurveyCampaign{}, errors.New("location not found for tenant")
 	}
+	ratingFaceSet, err := normalizeRatingFaceSet(req.RatingFaceSet)
+	if err != nil {
+		return SurveyCampaign{}, err
+	}
 
 	campaign := SurveyCampaign{
 		ID:              uuid.NewString(),
@@ -477,19 +518,20 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 		YelpReviewURL:   defaultString(strings.TrimSpace(req.YelpReviewURL), demoYelpReviewURL),
 		LogoURL:         defaultString(strings.TrimSpace(req.LogoURL), "/brands/nom/logo.png"),
 		Theme:           defaultString(strings.TrimSpace(req.Theme), "teal"),
+		RatingFaceSet:   ratingFaceSet,
 		Status:          "active",
 	}
 
 	if err := s.pool.QueryRow(ctx, `
 		insert into survey_campaigns (
 			id, tenant_id, location_id, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, rating_face_set, status
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		returning created_at
 	`, campaign.ID, campaign.TenantID, campaign.LocationID, campaign.Name, campaign.RestaurantName, campaign.Headline,
 		campaign.Prompt, campaign.IncentiveText, campaign.SMSKeyword, campaign.SMSPhone, campaign.GoogleReviewURL,
-		campaign.YelpReviewURL, campaign.LogoURL, campaign.Theme, campaign.Status,
+		campaign.YelpReviewURL, campaign.LogoURL, campaign.Theme, campaign.RatingFaceSet, campaign.Status,
 	).Scan(&campaign.CreatedAt); err != nil {
 		return SurveyCampaign{}, err
 	}
@@ -503,7 +545,7 @@ func (s *Store) CreateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 func (s *Store) ListSurveyCampaigns(ctx context.Context, tenantID string) ([]SurveyCampaign, error) {
 	rows, err := s.pool.Query(ctx, `
 		select id::text, tenant_id::text, location_id::text, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status, created_at
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, rating_face_set, status, created_at
 		from survey_campaigns
 		where tenant_id = $1
 		order by created_at desc
@@ -527,7 +569,7 @@ func (s *Store) ListSurveyCampaigns(ctx context.Context, tenantID string) ([]Sur
 func (s *Store) GetSurveyCampaign(ctx context.Context, tenantID, campaignID string) (SurveyCampaign, error) {
 	row := s.pool.QueryRow(ctx, `
 		select id::text, tenant_id::text, location_id::text, name, restaurant_name, headline, prompt, incentive_text,
-			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, status, created_at
+			sms_keyword, sms_phone, google_review_url, yelp_review_url, logo_url, theme, rating_face_set, status, created_at
 		from survey_campaigns
 		where tenant_id = $1 and id = $2
 	`, tenantID, campaignID)
@@ -560,6 +602,12 @@ func (s *Store) UpdateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 	if campaign.Theme == "" {
 		campaign.Theme = "teal"
 	}
+	if strings.TrimSpace(req.RatingFaceSet) != "" {
+		campaign.RatingFaceSet, err = normalizeRatingFaceSet(req.RatingFaceSet)
+		if err != nil {
+			return SurveyCampaign{}, err
+		}
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return SurveyCampaign{}, err
@@ -568,11 +616,12 @@ func (s *Store) UpdateSurveyCampaign(ctx context.Context, tenantID, actorID, act
 	if _, err := tx.Exec(ctx, `
 		update survey_campaigns
 		set location_id = $1, name = $2, restaurant_name = $3, headline = $4, prompt = $5, incentive_text = $6,
-			sms_keyword = $7, sms_phone = $8, google_review_url = $9, yelp_review_url = $10, logo_url = $11, theme = $12
-		where id = $13 and tenant_id = $14
+			sms_keyword = $7, sms_phone = $8, google_review_url = $9, yelp_review_url = $10, logo_url = $11, theme = $12,
+			rating_face_set = $13
+		where id = $14 and tenant_id = $15
 	`, campaign.LocationID, campaign.Name, campaign.RestaurantName, campaign.Headline, campaign.Prompt, campaign.IncentiveText,
 		campaign.SMSKeyword, campaign.SMSPhone, campaign.GoogleReviewURL, campaign.YelpReviewURL, campaign.LogoURL, campaign.Theme,
-		campaign.ID, tenantID); err != nil {
+		campaign.RatingFaceSet, campaign.ID, tenantID); err != nil {
 		return SurveyCampaign{}, err
 	}
 	if _, err := tx.Exec(ctx, `
@@ -1520,6 +1569,7 @@ func scanSurveyCampaign(row surveyCampaignScanner) (SurveyCampaign, error) {
 		&campaign.YelpReviewURL,
 		&campaign.LogoURL,
 		&campaign.Theme,
+		&campaign.RatingFaceSet,
 		&campaign.Status,
 		&campaign.CreatedAt,
 	)

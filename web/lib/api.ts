@@ -58,6 +58,7 @@ export type SurveyCampaign = {
   yelp_review_url: string;
   logo_url?: string;
   theme?: string;
+  rating_face_set: "heard" | "clay" | "glass" | "minimal" | "retro";
   status: string;
   created_at: string;
 };
@@ -214,6 +215,12 @@ type RequestOptions = {
   idempotencyKey?: string;
 };
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 const SESSION_STORAGE_KEY = "heard-session-v1";
 
 export function getStoredSession(): Session | null {
@@ -271,7 +278,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       const next = requested.startsWith("/admin") || requested.startsWith("/onboarding") ? requested : "/admin";
       window.location.assign(`/login?next=${encodeURIComponent(next)}`);
     }
-    throw new Error(payload?.error?.message ?? `Request failed with ${response.status}`);
+    throw new ApiError(payload?.error?.message ?? `Request failed with ${response.status}`, response.status);
   }
 
   return response.json() as Promise<T>;
@@ -282,7 +289,8 @@ export async function resolveSession(): Promise<Session | null> {
   try {
     const identity = await apiFetch<Identity>("/api/v1/session", { auth: false });
     return { access_token: "", expires_at: "", identity, tenant_id: identity.tenant_ids[0] ?? "" };
-  } catch {
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.status !== 401) throw caught;
     return null;
   }
 }

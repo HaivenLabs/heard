@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const heardAuthCallbackPath = "/api/v1/auth/callback"
+
 type Config struct {
 	AppEnv                            string
 	AppPort                           string
@@ -26,6 +28,7 @@ type Config struct {
 	PassageIssuer                     string
 	PassageAudience                   string
 	PassageJWKSCacheSeconds           int
+	PassageJWKSStaleSeconds           int
 	PassageCallbackURL                string
 	PassageClientID                   string
 	GoogleClientID                    string
@@ -40,15 +43,20 @@ type Config struct {
 }
 
 func LoadConfig() Config {
+	appEnv := getEnv("APP_ENV", "")
+	publicAppURL := strings.TrimSpace(os.Getenv("PUBLIC_APP_URL"))
+	if publicAppURL == "" && (appEnv == "local" || appEnv == "docker" || appEnv == "test") {
+		publicAppURL = "http://localhost:3010"
+	}
 	passageBaseURL := getEnv("PASSAGE_BASE_URL", "http://localhost:8081")
 	return Config{
-		AppEnv:                            getEnv("APP_ENV", ""),
+		AppEnv:                            appEnv,
 		AppPort:                           getEnv("APP_PORT", "8082"),
 		LocalBindAddress:                  getEnv("HEARD_BIND_ADDRESS", ""),
 		DatabaseURL:                       getEnv("DATABASE_URL", "postgres://heard:heard@localhost:5432/heard?sslmode=disable"),
-		PublicAppURL:                      getEnv("PUBLIC_APP_URL", "http://localhost:3010"),
-		WebBaseURL:                        getEnv("WEB_BASE_URL", "http://localhost:3010"),
-		AllowedOrigin:                     getEnv("ALLOWED_ORIGIN", "http://localhost:3010"),
+		PublicAppURL:                      publicAppURL,
+		WebBaseURL:                        strings.TrimRight(publicAppURL, "/"),
+		AllowedOrigin:                     strings.TrimRight(publicAppURL, "/"),
 		DemoSeedEnabled:                   getEnv("HEARD_SEED_DEMO", "true") == "true",
 		QURLBaseURL:                       getEnv("QURL_BASE_URL", ""),
 		PassageMode:                       getEnv("PASSAGE_MODE", ""),
@@ -58,7 +66,8 @@ func LoadConfig() Config {
 		PassageIssuer:                     getEnv("PASSAGE_ISSUER", "http://localhost:8081"),
 		PassageAudience:                   getEnv("PASSAGE_AUDIENCE", "heard"),
 		PassageJWKSCacheSeconds:           getEnvInt("PASSAGE_JWKS_CACHE_SECONDS", 300),
-		PassageCallbackURL:                getEnv("PASSAGE_CALLBACK_URL", "http://localhost:3010/api/v1/auth/callback"),
+		PassageJWKSStaleSeconds:           getEnvInt("PASSAGE_JWKS_STALE_SECONDS", 900),
+		PassageCallbackURL:                strings.TrimRight(publicAppURL, "/") + heardAuthCallbackPath,
 		PassageClientID:                   getEnv("PASSAGE_CLIENT_ID", "heard"),
 		GoogleClientID:                    getEnv("HEARD_GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:                getEnv("HEARD_GOOGLE_CLIENT_SECRET", ""),
@@ -95,6 +104,9 @@ func (cfg Config) ValidateRuntime() error {
 
 func (cfg Config) ValidateAPI() error {
 	if err := cfg.ValidateRuntime(); err != nil {
+		return err
+	}
+	if err := cfg.validateBrowserOriginContract(); err != nil {
 		return err
 	}
 	if cfg.PublicWriteRateLimit < 1 || cfg.PublicWriteRateLimit > 10000 {
@@ -136,6 +148,12 @@ func (cfg Config) ValidateAPI() error {
 		if strings.TrimSpace(cfg.PassageClientID) == "" {
 			return errors.New("PASSAGE_CLIENT_ID is required")
 		}
+		if cfg.PassageJWKSCacheSeconds < 30 || cfg.PassageJWKSCacheSeconds > 86400 {
+			return errors.New("PASSAGE_JWKS_CACHE_SECONDS must be between 30 and 86400")
+		}
+		if cfg.PassageJWKSStaleSeconds < 60 || cfg.PassageJWKSStaleSeconds > 86400 {
+			return errors.New("PASSAGE_JWKS_STALE_SECONDS must be between 60 and 86400")
+		}
 		for name, raw := range map[string]string{
 			"PASSAGE_BASE_URL": cfg.PassageBaseURL, "PASSAGE_PUBLIC_URL": cfg.PassagePublicURL,
 			"PASSAGE_ISSUER": cfg.PassageIssuer, "PASSAGE_CALLBACK_URL": cfg.PassageCallbackURL,
@@ -165,6 +183,36 @@ func (cfg Config) ValidateAPI() error {
 		}
 	}
 	return nil
+}
+
+func (cfg Config) validateBrowserOriginContract() error {
+	canonical, err := parseBrowserOrigin(cfg.PublicAppURL)
+	if err != nil {
+		return fmt.Errorf("PUBLIC_APP_URL: %w", err)
+	}
+	if cfg.IsProductionLike() && canonical.Scheme != "https" {
+		return errors.New("PUBLIC_APP_URL must use HTTPS in staging and production")
+	}
+	for name, raw := range map[string]string{"WEB_BASE_URL": cfg.WebBaseURL, "ALLOWED_ORIGIN": cfg.AllowedOrigin} {
+		candidate, parseErr := parseBrowserOrigin(raw)
+		if parseErr != nil || candidate.String() != canonical.String() {
+			return fmt.Errorf("%s must exactly match PUBLIC_APP_URL", name)
+		}
+	}
+	callback, err := url.Parse(strings.TrimSpace(cfg.PassageCallbackURL))
+	if err != nil || callback.Scheme != canonical.Scheme || callback.Host != canonical.Host || callback.Path != heardAuthCallbackPath || callback.RawQuery != "" || callback.Fragment != "" || callback.User != nil {
+		return fmt.Errorf("PASSAGE_CALLBACK_URL must equal %s%s", canonical.String(), heardAuthCallbackPath)
+	}
+	return nil
+}
+
+func parseBrowserOrigin(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, errors.New("must be an absolute HTTP(S) origin without a path, query, or fragment")
+	}
+	parsed.Path = ""
+	return parsed, nil
 }
 
 func (cfg Config) IsLocalRuntime() bool {

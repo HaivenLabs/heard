@@ -51,7 +51,7 @@ The production exchange follows Passage's published short-lived product-token an
 
 ## Data model
 
-- Heard persists restaurant tenant, location, onboarding state, and product attribution only.
+- Heard persists restaurant tenant, location, onboarding state, and product attribution only, plus a bounded cache of public identity signing keys. The key cache contains no sessions, tokens, or private key material and allows already-issued sessions to survive an API restart during an identity outage.
 - Passage owns identity, sessions, accounts, tenant membership, roles, and permissions.
 - Activation requests require idempotency so retries cannot create duplicate tenants or locations.
 - Billing and subscription state must use the future shared Haiven billing contract when commercial plan enforcement is introduced.
@@ -74,8 +74,8 @@ Activation state and outbox records must be committed atomically where downstrea
 
 ## Failure modes
 
-- Passage is unavailable: preserve safe progress, explain that account setup cannot currently continue, and allow retry.
-- Google cancellation returns to the originating Heard sign-in or signup page with a friendly notice; an unknown Google identity during sign-in is offered explicit account creation without silently provisioning it.
+- Passage is unavailable: public feedback and recovery routes remain available. Heard keeps accepting already-issued, unexpired sessions using previously verified signing keys for the bounded `PASSAGE_JWKS_STALE_SECONDS` window; unknown or rotated keys, invalid signatures, and expired tokens still fail closed. New sign-in, sign-up, recovery, and token-exchange attempts return a branded retry state. Durable onboarding progress resumes after identity service returns.
+- Google cancellation, expired authorization requests, and temporary identity-service failures return to the originating Heard sign-in or signup page with a friendly notice; an unknown Google identity during sign-in is offered explicit account creation without silently provisioning it.
 - Workspace or location creation fails: return a structured error and resume from the incomplete step without duplication.
 - qurl is unavailable: finish campaign creation, expose the feedback link, and clearly mark QR generation as temporarily unavailable.
 - The operator leaves midway: resume at the first incomplete step after the next authenticated visit.
@@ -89,6 +89,8 @@ Activation state and outbox records must be committed atomically where downstrea
 - Measure time to first campaign and drop-off by step.
 - Log correlation, actor, tenant, and activation identifiers without logging credentials or unnecessary restaurant/contact data.
 - Make activation failures and duplicate-prevention outcomes searchable.
+- `GET /api/v1/healthz` reports the generic identity dependency as `operational`, `degraded`, `unavailable`, or `unknown`, including only cached-key timing and refresh-failure state. A dependency outage does not fail Heard's public-service liveness check.
+- Local Next.js development permits script evaluation only for React Refresh so auth controls hydrate correctly; production CSP continues to prohibit `unsafe-eval`. Provider discovery successes and failures are emitted as structured, credential-free API logs.
 
 ## Tests required
 

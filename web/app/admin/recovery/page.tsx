@@ -100,7 +100,7 @@ function RecoveryInbox({ session }: { session: Session }) {
               ) : null}
               {cases.map((item) => (
                 <button
-                  className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition ${selectedCase?.id === item.id ? "border-clay bg-clay/10" : "border-ink/10 bg-[#fffdf9] hover:border-ink/20"}`}
+                  className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition ${selectedCase?.id === item.id ? "border-primary bg-primary/10" : "border-ink/10 bg-surface hover:border-ink/20"}`}
                   key={item.id}
                   onClick={() => setSelectedId(item.id)}
                   type="button"

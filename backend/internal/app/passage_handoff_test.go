@@ -101,7 +101,7 @@ func TestPassageBrowserHandoffUsesPKCEAndHttpOnlySession(t *testing.T) {
 	}
 }
 
-func TestPassageCallbackRejectsStateMismatchWithoutExchange(t *testing.T) {
+func TestPassageCallbackRecoversStateMismatchWithoutExchange(t *testing.T) {
 	var exchanges atomic.Int32
 	passage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { exchanges.Add(1) }))
 	defer passage.Close()
@@ -111,8 +111,30 @@ func TestPassageCallbackRejectsStateMismatchWithoutExchange(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "heard_oauth_verifier", Value: strings.Repeat("v", 43)})
 	rec := httptest.NewRecorder()
 	s.handlePassageCallback(rec, req)
-	if rec.Code != 400 || exchanges.Load() != 0 {
-		t.Fatalf("state mismatch status=%d exchanges=%d", rec.Code, exchanges.Load())
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://heard.test/login?auth_notice=session_expired" || exchanges.Load() != 0 {
+		t.Fatalf("state mismatch status=%d location=%s exchanges=%d", rec.Code, rec.Header().Get("Location"), exchanges.Load())
+	}
+}
+
+func TestPassageCallbackPreservesLoginDestinationWhenRecoveryIsSafe(t *testing.T) {
+	identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer identity.Close()
+	s := NewServer(Config{AppEnv: "test", PassageBaseURL: identity.URL, PassageCallbackURL: "http://heard.test/api/v1/auth/callback", PassageClientID: "heard", WebBaseURL: "http://heard.test"}, nil, stubIdentityProvider{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback?code=expired&state=expected", nil)
+	for _, cookie := range []*http.Cookie{
+		{Name: "heard_oauth_state", Value: "expected"},
+		{Name: "heard_oauth_verifier", Value: strings.Repeat("v", 43)},
+		{Name: "heard_oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte("/admin/recovery"))},
+		{Name: "heard_oauth_intent", Value: "login"},
+	} {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	s.handlePassageCallback(rec, req)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://heard.test/login?auth_notice=session_expired&next=%2Fadmin%2Frecovery" {
+		t.Fatalf("callback recovery=%d location=%s", rec.Code, rec.Header().Get("Location"))
 	}
 }
 
@@ -130,10 +152,10 @@ func TestPassageCallbackRedirectsProviderErrorsToBrandedAuthPages(t *testing.T) 
 		name, providerError, intent, destination string
 		startsRegistration                       bool
 	}{
-		{"login canceled", "access_denied", "login", "http://heard.test/login?auth_notice=cancelled", false},
+		{"login canceled", "access_denied", "login", "http://heard.test/login?auth_notice=cancelled&next=%2Fadmin", false},
 		{"signup canceled", "access_denied", "register", "http://heard.test/start?auth_notice=cancelled", false},
 		{"unknown login continues into Google registration", "identity_not_registered", "login", "", true},
-		{"provider failure", "provider_failed", "login", "http://heard.test/login?auth_notice=provider_error", false},
+		{"provider failure", "provider_failed", "login", "http://heard.test/login?auth_notice=provider_error&next=%2Fadmin", false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

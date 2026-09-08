@@ -56,7 +56,7 @@ export default function WalkthroughForm({ source }: { source: LeadSource }) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f1e6] text-ink">
+    <main className="relative min-h-screen overflow-hidden bg-parchment text-ink">
       <BrandBackdrop />
       <PublicHeader />
 
@@ -68,10 +68,10 @@ export default function WalkthroughForm({ source }: { source: LeadSource }) {
           <p className="mt-8 max-w-xl border-l-2 border-olive/55 pl-5 font-body text-sm leading-7 text-ink/55"><strong className="font-semibold text-ink">What happens next:</strong> a real person from heard will learn how you collect feedback today and tailor the walkthrough to your restaurant.</p>
         </section>
 
-        <section className="rounded-[2rem] border border-ink/10 bg-[#fffaf0]/95 p-6 text-ink shadow-[0_28px_80px_rgba(23,37,29,0.14)] backdrop-blur-sm sm:p-9">
+        <section className="rounded-[2rem] border border-ink/10 bg-surface/95 p-6 text-ink shadow-[0_28px_80px_rgba(9,40,21,0.14)] backdrop-blur-sm sm:p-9">
           {lead ? (
             <div className="py-8 text-center">
-              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-olive/15 text-3xl text-olive">&#10003;</div>
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-sage/20 text-3xl text-teal">✓</div>
               <p className="mt-6 font-body text-xs font-bold uppercase tracking-[0.22em] text-clay">Request received</p>
               <h2 className="mt-3 font-display text-4xl tracking-[-0.045em]">We&apos;ll take it from here.</h2>
               <p className="mx-auto mt-4 max-w-md font-body text-base leading-7 text-ink/60">The heard team has your request for {lead.restaurant_name}. We&apos;ll reach out using the contact details you provided.</p>
@@ -113,7 +113,7 @@ export default function WalkthroughForm({ source }: { source: LeadSource }) {
 
                 {error ? <div aria-live="assertive" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700" role="alert">{error}</div> : null}
 
-                <button className="h-14 w-full rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.24)] transition hover:-translate-y-0.5 hover:bg-[#b95635] disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">{busy ? "Saving your request..." : "Request my walkthrough"}</button>
+                <button className="h-14 w-full rounded-full bg-primary px-6 font-display text-sm font-semibold tracking-[0.06em] text-white shadow-[0_14px_30px_rgba(9,40,21,0.24)] transition hover:-translate-y-0.5 hover:bg-spruce disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">{busy ? "Saving your request..." : "Request my walkthrough"}</button>
                 <p className="text-center font-body text-xs leading-5 text-ink/40">By submitting, you agree that heard may contact you about this request. We&apos;ll only use these details to follow up about heard.</p>
               </form>
             </>

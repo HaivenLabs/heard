@@ -60,6 +60,50 @@ type IdentityProvider interface {
 	VerifyToken(ctx context.Context, accessToken string) (Identity, error)
 }
 
+// IdentityJWKSCache persists only public identity signing keys and their
+// validity bounds. It never stores an access token, browser session, or secret.
+type IdentityJWKSCache interface {
+	LoadIdentityJWKS(ctx context.Context, issuer string) (IdentityJWKSCacheRecord, bool, error)
+	SaveIdentityJWKS(ctx context.Context, record IdentityJWKSCacheRecord) error
+}
+
+type IdentityJWKSCacheRecord struct {
+	Issuer     string
+	Keys       map[string]string
+	FreshUntil time.Time
+	StaleUntil time.Time
+}
+
+// IdentityHealth is an operator-facing status for the identity boundary. It
+// never includes credentials, token data, or provider responses.
+type IdentityHealth struct {
+	Status            string    `json:"status"`
+	CachedKeyCount    int       `json:"cached_key_count,omitempty"`
+	FreshUntil        time.Time `json:"fresh_until,omitempty"`
+	StaleUntil        time.Time `json:"stale_until,omitempty"`
+	LastRefreshFailed bool      `json:"last_refresh_failed"`
+}
+
+type identityHealthReporter interface {
+	IdentityHealth() IdentityHealth
+}
+
+type identityHealthRefresher interface {
+	RefreshIdentityHealth(ctx context.Context)
+}
+
+type identityCacheInitializer interface {
+	InitializeIdentityCache(ctx context.Context, cache IdentityJWKSCache)
+}
+
+// InitializeIdentityCache restores a bounded cache of public signing keys when
+// available. A cache failure does not prevent Heard's public flows from serving.
+func InitializeIdentityCache(ctx context.Context, provider IdentityProvider, cache IdentityJWKSCache) {
+	if initializer, ok := provider.(identityCacheInitializer); ok && cache != nil {
+		initializer.InitializeIdentityCache(ctx, cache)
+	}
+}
+
 type localSessionIssuer interface {
 	IssueSession(email string) (Session, error)
 }

@@ -46,7 +46,7 @@ function Console({ session }: { session: Session }) {
               Launch a feedback campaign tonight. Every response under five lands in recovery so your team knows who needs a human follow-up.
             </p>
           </div>
-          <Link className="inline-flex h-[3.25rem] items-center justify-center rounded-full bg-clay px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.25)] transition hover:-translate-y-0.5 hover:bg-[#b95635]" href="/admin/campaigns?new=1">
+          <Link className="inline-flex h-[3.25rem] items-center justify-center rounded-full bg-primary px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(9,40,21,0.25)] transition hover:-translate-y-0.5 hover:bg-spruce" href="/admin/campaigns?new=1">
             Create campaign
           </Link>
         </div>
@@ -60,7 +60,7 @@ function Console({ session }: { session: Session }) {
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.75fr]">
-          <div className="overflow-hidden rounded-[2rem] border border-ink/10 bg-[#fffdf8] shadow-soft">
+          <div className="overflow-hidden rounded-[2rem] border border-ink/10 bg-surface shadow-soft">
             <div className="flex items-center justify-between border-b border-ink/8 px-6 py-5">
               <div>
                 <p className="font-body text-xs uppercase tracking-[0.22em] text-ink/40">Campaigns</p>
@@ -71,7 +71,7 @@ function Console({ session }: { session: Session }) {
             <div className="p-4">
               {!data ? <LoadingRows /> : null}
               {data?.campaigns.length === 0 ? (
-                <div className="rounded-[1.5rem] bg-[#f5efe6] px-6 py-10 text-center">
+                <div className="rounded-[1.5rem] bg-canvas px-6 py-10 text-center">
                   <p className="font-display text-2xl">Your first campaign starts here.</p>
                   <p className="mx-auto mt-2 max-w-md font-body text-sm leading-6 text-ink/55">Choose a location, tune the flyer copy, and heard will create the survey link through the qurl boundary.</p>
                 </div>
@@ -88,7 +88,7 @@ function Console({ session }: { session: Session }) {
             </div>
           </div>
 
-          <aside className="rounded-[2rem] bg-[#17251d] p-7 text-parchment shadow-soft">
+          <aside className="rounded-[2rem] bg-primary p-7 text-parchment shadow-soft">
             <p className="font-body text-xs uppercase tracking-[0.25em] text-parchment/45">Tonight&apos;s loop</p>
             <h2 className="mt-4 font-display text-3xl tracking-[-0.04em]">From table to recovery.</h2>
             <ol className="mt-7 space-y-5 font-body text-sm leading-6 text-parchment/68">
@@ -105,7 +105,7 @@ function Console({ session }: { session: Session }) {
 
 function Metric({ accent = false, label, loading, value }: { accent?: boolean; label: string; loading: boolean; value: number }) {
   return (
-    <div className={`rounded-[1.6rem] border p-6 ${accent ? "border-clay/25 bg-clay text-white" : "border-ink/10 bg-[#fffdf8]"}`}>
+    <div className={`rounded-[1.6rem] border p-6 ${accent ? "border-primary/25 bg-primary text-white" : "border-ink/10 bg-surface"}`}>
       <p className={`font-body text-xs uppercase tracking-[0.2em] ${accent ? "text-white/65" : "text-ink/42"}`}>{label}</p>
       <p className="mt-4 font-display text-5xl tracking-[-0.06em]">{loading ? "–" : value}</p>
     </div>

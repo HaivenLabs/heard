@@ -397,6 +397,9 @@ Requirements:
 - Role and tenant scoping must be enforced after authentication.
 - Local development may use a clearly labeled auth bypass only in non-production environments.
 - Product repos must integrate with Passage through documented contracts.
+- Browser-facing products must declare one canonical public origin for every environment (local, integration, staging, and production). Alternate hosts must redirect to that origin before an OAuth, session, CSRF, PKCE, or state cookie is created.
+- OAuth callback, CORS allow-origin, branded recovery redirects, and public application URLs must be derived from or validated against that same canonical origin. Do not infer a callback origin from an untrusted request host.
+- Non-local environments must configure their canonical browser origin explicitly and use HTTPS. Environment promotion must change configuration, not source code or registered callback paths.
 
 Definition of done:
 
@@ -406,6 +409,7 @@ Definition of done:
 - Role and tenant checks are enforced for authenticated requests.
 - Local auth bypass cannot run in production mode.
 - Product-specific permissions are tested.
+- Tests cover canonical-origin redirects and reject callback/CORS/origin drift for every identity-enabled product.
 
 ---
 
@@ -643,6 +647,10 @@ Requirements:
 - RBAC enforcement.
 - Principle of least privilege.
 - Secure secret handling.
+- Every repository must ignore real environment files with `.env`, `.env.*`, and `!.env.example` rules in `.gitignore`.
+- `.env.example` may be committed only with sanitized placeholders; actual credentials and environment values may never be committed.
+- A discovered tracked environment file requires removing it from Git tracking, rotating any exposed credentials, and documenting the remediation before the check can pass.
+- Local developer environment files that are correctly ignored must not fail policy checks merely because they exist on disk.
 - Signed webhooks where applicable.
 - PII masking.
 - Secure defaults.
@@ -675,6 +683,7 @@ Definition of done:
 - Sensitive fields protected.
 - Security-sensitive flows audited.
 - Secrets are not committed.
+- Environment-file ignore policy is present and enforced.
 - Logs do not expose sensitive data.
 - The complete install-time dependency graph passes the configured vulnerability and malware gates.
 - Lockfiles, package-manager policy, CI action pins, token permissions, SBOMs, and provenance are validated automatically.

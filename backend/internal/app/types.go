@@ -47,6 +47,7 @@ type SurveyCampaign struct {
 	YelpReviewURL   string    `json:"yelp_review_url"`
 	LogoURL         string    `json:"logo_url"`
 	Theme           string    `json:"theme"`
+	RatingFaceSet   string    `json:"rating_face_set"`
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
 }

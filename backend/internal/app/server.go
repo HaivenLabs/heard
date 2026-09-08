@@ -100,6 +100,7 @@ type createSurveyCampaignRequest struct {
 	YelpReviewURL   string `json:"yelp_review_url"`
 	LogoURL         string `json:"logo_url"`
 	Theme           string `json:"theme"`
+	RatingFaceSet   string `json:"rating_face_set"`
 }
 
 type updateSurveyCampaignRequest struct {
@@ -115,6 +116,7 @@ type updateSurveyCampaignRequest struct {
 	YelpReviewURL   string `json:"yelp_review_url"`
 	LogoURL         string `json:"logo_url"`
 	Theme           string `json:"theme"`
+	RatingFaceSet   string `json:"rating_face_set"`
 }
 
 type createFeedbackLinkRequest struct {
@@ -299,7 +301,7 @@ func (s *Server) withIdentity(permission string, next func(http.ResponseWriter, 
 		if err != nil {
 			if errors.Is(err, errIdentityUnavailable) {
 				log.Printf("identity provider unavailable path=%s", r.URL.Path)
-				writeError(w, http.StatusServiceUnavailable, "identity service unavailable")
+				writeError(w, http.StatusServiceUnavailable, "sign-in is temporarily unavailable; please try again shortly")
 				return
 			}
 			writeError(w, http.StatusUnauthorized, "invalid or expired session")
@@ -341,8 +343,21 @@ func (s *Server) withOwnerContext(permission string, next func(http.ResponseWrit
 	})
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if refresher, ok := s.identity.(identityHealthRefresher); ok {
+		refresher.RefreshIdentityHealth(r.Context())
+	}
+	health := IdentityHealth{Status: "unknown"}
+	if reporter, ok := s.identity.(identityHealthReporter); ok {
+		health = reporter.IdentityHealth()
+	} else if s.identity != nil {
+		health.Status = "operational"
+	}
+	status := "ok"
+	if health.Status == "degraded" || health.Status == "unavailable" {
+		status = "degraded"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "dependencies": map[string]IdentityHealth{"identity": health}})
 }
 
 func (s *Server) handleCreateMarketingLead(w http.ResponseWriter, r *http.Request) {
@@ -486,6 +501,10 @@ func (s *Server) handleHeardLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError {
+			writeError(w, http.StatusServiceUnavailable, "sign-in is temporarily unavailable")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "email or password is incorrect")
 		return
 	}
@@ -516,6 +535,10 @@ func (s *Server) handleHeardLogin(w http.ResponseWriter, r *http.Request) {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 		TokenType   string `json:"token_type"`
+	}
+	if tokenResponse.StatusCode == http.StatusTooManyRequests || tokenResponse.StatusCode >= http.StatusInternalServerError {
+		writeError(w, http.StatusServiceUnavailable, "sign-in is temporarily unavailable")
+		return
 	}
 	if tokenResponse.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(tokenResponse.Body, 1<<16)).Decode(&token) != nil || token.TokenType != "Bearer" || token.AccessToken == "" {
 		writeError(w, http.StatusUnauthorized, "your account is not ready for heard yet")
@@ -608,17 +631,20 @@ func (s *Server) handleIdentityProviders(w http.ResponseWriter, r *http.Request)
 	endpoint := strings.TrimRight(s.cfg.PassageBaseURL, "/") + "/api/v1/auth/providers?client_id=" + url.QueryEscape(s.cfg.PassageClientID)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, endpoint, nil)
 	if err != nil {
+		log.Printf(`{"event":"identity.provider_discovery_failed","reason":"invalid_configuration"}`)
 		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
 		return
 	}
 	resp, err := s.passageHTTP.Do(req)
 	if err != nil {
+		log.Printf(`{"event":"identity.provider_discovery_failed","reason":"request_failed","error_type":%q}`, fmt.Sprintf("%T", err))
 		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
 		return
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if readErr != nil || resp.StatusCode != http.StatusOK {
+		log.Printf(`{"event":"identity.provider_discovery_failed","reason":"upstream_response","status":%d}`, resp.StatusCode)
 		writeError(w, http.StatusServiceUnavailable, "sign-in methods are temporarily unavailable")
 		return
 	}
@@ -626,6 +652,7 @@ func (s *Server) handleIdentityProviders(w http.ResponseWriter, r *http.Request)
 		Providers []string `json:"providers"`
 	}
 	if json.Unmarshal(raw, &payload) != nil {
+		log.Printf(`{"event":"identity.provider_discovery_failed","reason":"invalid_response"}`)
 		writeError(w, http.StatusBadGateway, "sign-in methods are temporarily unavailable")
 		return
 	}
@@ -635,34 +662,30 @@ func (s *Server) handleIdentityProviders(w http.ResponseWriter, r *http.Request)
 			allowed = append(allowed, provider)
 		}
 	}
+	log.Printf(`{"event":"identity.provider_discovery_succeeded","available_count":%d}`, len(allowed))
 	writeJSON(w, http.StatusOK, map[string]any{"providers": allowed})
 }
 
 func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 	code, state, providerError := r.URL.Query().Get("code"), r.URL.Query().Get("state"), r.URL.Query().Get("error")
-	if providerError == "provider_session_expired" {
-		s.clearOAuthCookies(w)
-		http.Redirect(w, r, strings.TrimRight(s.cfg.WebBaseURL, "/")+"/login?auth_notice=session_expired", http.StatusFound)
-		return
-	}
 	stateCookie, stateErr := r.Cookie("heard_oauth_state")
 	verifierCookie, verifierErr := r.Cookie("heard_oauth_verifier")
 	returnCookie, _ := r.Cookie("heard_oauth_return")
 	intentCookie, _ := r.Cookie("heard_oauth_intent")
+	if providerError == "provider_session_expired" {
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "session_expired")
+		return
+	}
 	if stateErr != nil || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
-		writeError(w, 400, "account sign-in request is invalid or expired")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "session_expired")
 		return
 	}
 	if providerError != "" {
-		s.clearOAuthCookies(w)
 		intent := "login"
 		if intentCookie != nil && intentCookie.Value == "register" {
 			intent = "register"
 		}
-		path, notice := "/login", "provider_error"
-		if intent == "register" {
-			path = "/start"
-		}
+		notice := "provider_error"
 		switch providerError {
 		case "access_denied":
 			notice = "cancelled"
@@ -677,35 +700,38 @@ func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, strings.TrimRight(s.cfg.WebBaseURL, "/")+registration.String(), http.StatusFound)
 				return
 			}
-			path, notice = "/start", "account_not_found"
+			notice = "account_not_found"
 		}
-		destination := strings.TrimRight(s.cfg.WebBaseURL, "/") + path + "?auth_notice=" + url.QueryEscape(notice)
-		http.Redirect(w, r, destination, http.StatusFound)
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, notice)
 		return
 	}
 	if code == "" || verifierErr != nil {
-		writeError(w, 400, "account sign-in request is invalid or expired")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "session_expired")
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "code": code, "client_id": s.cfg.PassageClientID, "redirect_uri": s.cfg.PassageCallbackURL, "code_verifier": verifierCookie.Value})
 	endpoint := strings.TrimRight(s.cfg.PassageBaseURL, "/") + "/api/v1/oauth/token"
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, strings.NewReader(string(payload)))
 	if err != nil {
-		writeError(w, 502, "account service is temporarily unavailable")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "service_unavailable")
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.passageHTTP.Do(req)
 	if err != nil {
 		log.Printf("Passage handoff exchange unavailable: %v", err)
-		writeError(w, 503, "account service is temporarily unavailable")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "service_unavailable")
 		return
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if readErr != nil || resp.StatusCode != 200 {
 		log.Printf("Passage handoff exchange failed status=%d", resp.StatusCode)
-		writeError(w, 401, "account sign-in request is invalid or expired")
+		notice := "service_unavailable"
+		if resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError {
+			notice = "session_expired"
+		}
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, notice)
 		return
 	}
 	var exchanged struct {
@@ -714,13 +740,13 @@ func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if json.Unmarshal(raw, &exchanged) != nil || exchanged.AccessToken == "" || exchanged.TokenType != "Bearer" {
-		writeError(w, 502, "account service returned an invalid response")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "service_unavailable")
 		return
 	}
 	identity, err := s.identity.VerifyToken(r.Context(), exchanged.AccessToken)
 	if err != nil {
 		log.Printf("Passage handoff token verification failed")
-		writeError(w, 502, "account service returned an invalid response")
+		s.redirectToAuthRecovery(w, r, intentCookie, returnCookie, "service_unavailable")
 		return
 	}
 	secure := s.cfg.IsProductionLike()
@@ -753,9 +779,33 @@ func (s *Server) handlePassageCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, destination, http.StatusFound)
 }
 
+// redirectToAuthRecovery keeps browser OAuth failures inside Heard's branded
+// auth journey. State and PKCE validation still happens before any exchange.
+func (s *Server) redirectToAuthRecovery(w http.ResponseWriter, r *http.Request, intentCookie, returnCookie *http.Cookie, notice string) {
+	intent := "login"
+	if intentCookie != nil && intentCookie.Value == "register" {
+		intent = "register"
+	}
+	path := "/login"
+	if intent == "register" {
+		path = "/start"
+	}
+	query := url.Values{"auth_notice": []string{notice}}
+	if intent == "login" && returnCookie != nil {
+		if decoded, err := base64.RawURLEncoding.DecodeString(returnCookie.Value); err == nil {
+			returnTo := safeReturnPath(string(decoded))
+			if returnTo != "/onboarding" {
+				query.Set("next", returnTo)
+			}
+		}
+	}
+	s.clearOAuthCookies(w)
+	http.Redirect(w, r, strings.TrimRight(s.cfg.WebBaseURL, "/")+path+"?"+query.Encode(), http.StatusFound)
+}
+
 func (s *Server) clearOAuthCookies(w http.ResponseWriter) {
 	secure := s.cfg.IsProductionLike()
-	for _, name := range []string{"heard_oauth_state", "heard_oauth_verifier", "heard_oauth_return", "heard_oauth_intent"} {
+	for _, name := range []string{"heard_oauth_state", "heard_oauth_verifier", "heard_oauth_return", "heard_oauth_intent", "heard_onboarding_draft"} {
 		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 	}
 }

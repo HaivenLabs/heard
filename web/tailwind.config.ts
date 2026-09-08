@@ -1,5 +1,7 @@
 import type { Config } from "tailwindcss";
 
+const tokenColor = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",
@@ -9,15 +11,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        parchment: "#f7f1e3",
-        ink: "#111827",
-        clay: "#cb6843",
-        olive: "#6d7d46",
-        mist: "#e8e1d4",
-        sand: "#d8c9b4"
+        canvas: tokenColor("--hv-surface-canvas-rgb"),
+        surface: tokenColor("--hv-surface-raised-rgb"),
+        parchment: tokenColor("--hv-surface-subtle-rgb"),
+        ink: tokenColor("--hv-text-primary-rgb"),
+        primary: tokenColor("--hv-action-primary-rgb"),
+        spruce: tokenColor("--hv-action-primary-hover-rgb"),
+        teal: tokenColor("--hv-action-primary-rgb"),
+        sage: tokenColor("--hv-color-moss-rgb"),
+        mist: tokenColor("--hv-action-primary-soft-rgb"),
+        sand: tokenColor("--hv-color-line-rgb"),
+        // Compatibility aliases. Use primary, teal, and sage for new UI work.
+        clay: tokenColor("--hv-action-primary-hover-rgb"),
+        olive: tokenColor("--hv-action-primary-rgb")
       },
       boxShadow: {
-        soft: "0 24px 60px rgba(17, 24, 39, 0.12)"
+        soft: "var(--hv-shadow-md)"
       },
       fontFamily: {
         display: ["Avenir Next", "Segoe UI", "Helvetica Neue", "sans-serif"],

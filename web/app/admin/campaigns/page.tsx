@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAdminSession } from "../../../components/admin-session";
-import { RatingFace, RatingValue } from "../../../components/rating-face";
+import { RATING_FACE_SETS, RatingFace, RatingFaceSet, RatingValue } from "../../../components/rating-face";
 import { apiFetch, FeedbackLink, Location, Session, SurveyCampaign } from "../../../lib/api";
 import { slugify } from "../../../lib/slug";
 
@@ -33,6 +33,7 @@ const emptyCampaignForm = {
   sms_phone: defaultCampaign.smsPhone,
   google_review_url: defaultCampaign.googleReviewURL,
   yelp_review_url: defaultCampaign.yelpReviewURL,
+  rating_face_set: "heard" as RatingFaceSet,
   path_slug: defaultCampaign.pathSlug
 };
 
@@ -105,7 +106,8 @@ function CampaignBuilder({ session }: { session: Session }) {
             sms_keyword: payload.campaign?.sms_keyword || prev.sms_keyword,
             sms_phone: payload.campaign?.sms_phone || prev.sms_phone,
             google_review_url: payload.campaign?.google_review_url || prev.google_review_url,
-            yelp_review_url: payload.campaign?.yelp_review_url || prev.yelp_review_url
+            yelp_review_url: payload.campaign?.yelp_review_url || prev.yelp_review_url,
+            rating_face_set: payload.campaign?.rating_face_set || prev.rating_face_set
           }));
           const links = await apiFetch<{ items: FeedbackLink[] }>(`/api/v1/feedback-links?campaign_id=${encodeURIComponent(payload.campaign.id)}`, { tenantId });
           if (links.items[0]) setLink(links.items[0]);
@@ -160,7 +162,8 @@ function CampaignBuilder({ session }: { session: Session }) {
         sms_phone: formData.sms_phone,
         google_review_url: formData.google_review_url,
         yelp_review_url: formData.yelp_review_url,
-        logo_url: formData.logo_url
+        logo_url: formData.logo_url,
+        rating_face_set: formData.rating_face_set
       };
       const savedCampaign = await apiFetch<SurveyCampaign>(campaign ? `/api/v1/survey-campaigns/${campaign.id}` : "/api/v1/survey-campaigns", {
         method: campaign ? "PATCH" : "POST",
@@ -218,7 +221,7 @@ function CampaignBuilder({ session }: { session: Session }) {
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-clay">Campaign builder</p>
+            <p className="font-body text-xs font-bold uppercase tracking-[0.28em] text-teal">Campaign builder</p>
             <h1 className="mt-4 font-display text-4xl tracking-[-0.05em] sm:text-5xl">{campaign ? "Edit your guest feedback campaign." : "Create a flyer guests will actually scan."}</h1>
             <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-ink/55">{campaign ? "Tune the guest-facing message, then save changes to this campaign and its existing flyer link." : "Choose the location, tune the guest-facing message, and preview the complete takeout flyer in real-time."}</p>
           </div>
@@ -228,11 +231,11 @@ function CampaignBuilder({ session }: { session: Session }) {
           <form className="space-y-5" onSubmit={saveCampaign}>
             {error ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</div> : null}
 
-            <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
+            <section className="rounded-[2rem] border border-ink/10 bg-surface p-6 shadow-soft">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
                   <span className="mb-1 block text-sm font-medium">Location</span>
-                  <select className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-clay focus:ring-4 focus:ring-clay/10" name="location_id" onChange={handleInputChange} value={formData.location_id} required>
+                  <select className="h-12 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body text-sm outline-none transition focus:border-teal focus:ring-4 focus:ring-teal/10" name="location_id" onChange={handleInputChange} value={formData.location_id} required>
                     {locations.map((location) => (
                       <option key={location.id} value={location.id}>{location.name}</option>
                     ))}
@@ -247,11 +250,11 @@ function CampaignBuilder({ session }: { session: Session }) {
                   <span className="mb-1 block text-sm font-medium">Restaurant logo</span>
                   <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-ink/15 bg-white p-4">
                     {formData.logo_url ? (
-                      <div className="relative h-16 w-16 overflow-hidden rounded-full border border-ink/10 bg-[#f7f1e6] shadow-sm shrink-0">
+                      <div className="relative h-16 w-16 overflow-hidden rounded-full border border-ink/10 bg-parchment shadow-sm shrink-0">
                         <img alt="Logo preview" className="h-full w-full object-cover" src={formData.logo_url} />
                       </div>
                     ) : (
-                      <div className="grid h-16 w-16 place-items-center rounded-full bg-[#416a6c] font-display text-xl font-bold lowercase text-[#f8f0dc] shrink-0">
+                      <div className="grid h-16 w-16 place-items-center rounded-full bg-teal font-display text-xl font-bold lowercase text-parchment shrink-0">
                         {(formData.restaurant_name || "R").slice(0, 1)}
                       </div>
                     )}
@@ -268,6 +271,33 @@ function CampaignBuilder({ session }: { session: Session }) {
                     </div>
                   </div>
                 </div>
+
+                <fieldset className="sm:col-span-2">
+                  <legend className="text-sm font-medium">Rating face style</legend>
+                  <p className="mt-1 font-body text-xs leading-5 text-ink/55">Choose the SVG style guests will see throughout this campaign.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {RATING_FACE_SETS.map((faceSet) => {
+                      const selected = formData.rating_face_set === faceSet.value;
+                      return (
+                        <label className={`cursor-pointer rounded-2xl border p-4 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-teal/20 ${selected ? "border-teal bg-teal/5 ring-4 ring-teal/10" : "border-ink/10 bg-white hover:border-teal/40"}`} key={faceSet.value}>
+                          <input className="peer sr-only" name="rating_face_set" onChange={handleInputChange} type="radio" value={faceSet.value} checked={selected} />
+                          <span className="flex items-start justify-between gap-3">
+                            <span>
+                              <span className="block font-body text-sm font-semibold text-ink">{faceSet.label}</span>
+                              <span className="mt-0.5 block font-body text-xs text-ink/50">{faceSet.description}</span>
+                            </span>
+                            <span aria-hidden="true" className={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${selected ? "border-teal" : "border-ink/30 bg-white"}`}>
+                              {selected ? <span className="size-2.5 rounded-full bg-teal" /> : null}
+                            </span>
+                          </span>
+                          <span className="mt-3 grid grid-cols-5 gap-1.5" aria-hidden="true">
+                            {([1, 2, 3, 4, 5] as RatingValue[]).map((value) => <RatingFace className="w-full overflow-visible" faceSet={faceSet.value} key={value} rating={value} />)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
 
                 <TextInput label="Flyer headline" name="headline" onChange={handleInputChange} required value={formData.headline} />
                 <TextInput label="Survey prompt" name="prompt" onChange={handleInputChange} required value={formData.prompt} />
@@ -293,7 +323,7 @@ function CampaignBuilder({ session }: { session: Session }) {
             </section>
 
             {/* Unified Survey Link & Path Settings Box */}
-            <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
+            <section className="rounded-[2rem] border border-ink/10 bg-surface p-6 shadow-soft">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-body text-xs font-bold uppercase tracking-[0.2em] text-olive">Your survey link</span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 font-body text-xs font-semibold text-emerald-700 border border-emerald-200">
@@ -314,7 +344,7 @@ function CampaignBuilder({ session }: { session: Session }) {
               </div>
 
               {/* Live URL & Instant Action Controls */}
-              <div className="mt-4 rounded-2xl border border-ink/10 bg-[#f7f1e6]/60 p-4">
+              <div className="mt-4 rounded-2xl border border-ink/10 bg-parchment/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-body text-[11px] font-bold uppercase tracking-wider text-ink/45">Your survey link</p>
@@ -333,46 +363,46 @@ function CampaignBuilder({ session }: { session: Session }) {
             </section>
 
             {/* Action Submit Button */}
-            <button className="h-13 w-full rounded-full bg-clay px-5 py-4 font-display text-sm font-semibold uppercase tracking-[0.12em] text-white shadow-[0_14px_30px_rgba(203,104,67,0.24)] transition hover:-translate-y-0.5 hover:bg-[#b95635] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || locations.length === 0} type="submit">
+            <button className="h-13 w-full rounded-full bg-primary px-5 py-4 font-display text-sm font-semibold uppercase tracking-[0.12em] text-white shadow-[0_14px_30px_rgba(9,40,21,0.24)] transition hover:-translate-y-0.5 hover:bg-spruce disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || locations.length === 0} type="submit">
               {busy ? "Saving campaign..." : campaign ? "Save campaign changes" : "Create flyer survey link"}
             </button>
           </form>
 
           {/* Real-time Live Flyer Preview Card */}
           <aside className="space-y-4">
-            <section className="sticky top-6 rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-6 shadow-soft">
+            <section className="sticky top-6 rounded-[2rem] border border-ink/10 bg-surface p-6 shadow-soft">
               <p className="mb-4 font-body text-xs font-bold uppercase tracking-[0.2em] text-ink/45">Live flyer preview</p>
-              <div className="mx-auto max-w-md rounded-lg border border-[#cfd6e4] bg-[#fffaf5] p-6 text-center shadow-sm">
+              <div className="mx-auto max-w-md rounded-lg border border-sand bg-surface p-6 text-center shadow-sm">
                 {formData.logo_url ? (
                   <img alt={formData.restaurant_name} className="mx-auto mb-4 h-16 w-16 rounded-full object-cover" height="64" src={formData.logo_url} width="64" />
                 ) : (
-                  <span className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-[#416a6c] font-display text-2xl font-bold lowercase text-[#f8f0dc]">
+                  <span className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-primary font-display text-2xl font-bold lowercase text-parchment">
                     {(formData.restaurant_name || "R").slice(0, 1)}
                   </span>
                 )}
-                <p className="text-sm font-medium text-[#667085]">{formData.restaurant_name || "Restaurant Name"}</p>
-                <h2 className="mt-3 text-4xl font-black uppercase tracking-normal text-[#111827]">{formData.headline || "How did we do?"}</h2>
+                <p className="text-sm font-medium text-ink/60">{formData.restaurant_name || "Restaurant Name"}</p>
+                <h2 className="mt-3 text-4xl font-black uppercase tracking-normal text-ink">{formData.headline || "How did we do?"}</h2>
                 <div className="mt-5 grid grid-cols-5 gap-2" aria-label="Survey rating options">
                   {([1, 2, 3, 4, 5] as RatingValue[]).map((value) => (
-                    <RatingFace className="w-full overflow-visible" key={value} rating={value} />
+                    <RatingFace className="w-full overflow-visible" faceSet={formData.rating_face_set} key={value} rating={value} />
                   ))}
                 </div>
-                <p className="mt-6 text-lg font-black uppercase tracking-normal text-[#111827]">{formData.incentive_text || "Giveaway copy"}</p>
+                <p className="mt-6 text-lg font-black uppercase tracking-normal text-ink">{formData.incentive_text || "Giveaway copy"}</p>
                 <div className="mt-6 grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-                  <div className="min-w-0 rounded-lg border-2 border-[#111827] bg-white p-3">
+                  <div className="min-w-0 rounded-lg border-2 border-ink bg-white p-3">
                     {link?.qr_asset_url ? (
                       <img alt="Generated qurl QR asset" className="mx-auto aspect-square max-w-40 object-contain" src={link.qr_asset_url} />
                     ) : (
-                      <div className="grid aspect-square place-items-center rounded-md bg-[#edf2f7] p-3 text-center text-sm text-[#667085]">
+                      <div className="grid aspect-square place-items-center rounded-md bg-parchment p-3 text-center text-sm text-ink/60">
                         qurl not configured
                       </div>
                     )}
                   </div>
-                  <p className="font-black uppercase text-[#111827]">or</p>
+                  <p className="font-black uppercase text-ink">or</p>
                   <div className="min-w-0 text-left">
-                    <p className="text-2xl font-black uppercase"><span className="text-[#f25f4c]">Text</span> {formData.sms_keyword || "WIN"}</p>
+                    <p className="text-2xl font-black uppercase"><span className="text-primary">Text</span> {formData.sms_keyword || "WIN"}</p>
                     <p className="text-2xl font-black uppercase">to</p>
-                    <p className="break-words text-2xl font-black text-[#f25f4c]">{formData.sms_phone || "(800) 000-0000"}</p>
+                    <p className="break-words text-2xl font-black text-primary">{formData.sms_phone || "(800) 000-0000"}</p>
                   </div>
                 </div>
               </div>

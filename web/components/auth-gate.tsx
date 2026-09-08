@@ -37,13 +37,18 @@ export function AuthGate({ children, requireOnboardingComplete = false }: { chil
         }
       }
       setSession(current);
+    }).catch(() => {
+      if (!active) return;
+      const requested = `${pathname}${window.location.search}`;
+      router.replace(`/login?auth_notice=service_unavailable&next=${encodeURIComponent(requested)}` as Route);
+      setSession(null);
     });
     return () => { active = false; };
   }, [pathname, requireOnboardingComplete, router]);
 
   if (!session) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#f5efe6] text-ink">
+      <main className="grid min-h-screen place-items-center bg-canvas text-ink">
         <div className="flex items-center gap-3 font-body text-sm text-ink/60">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-clay" />
           Checking your heard session

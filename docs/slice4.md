@@ -15,6 +15,8 @@ As a Heard prospect using the seeded demo, the information I enter is persisted 
 - Supplied nom logo and nom-derived teal, cream, coral, and ink colors.
 - Lowercase `heard` and `nom` brand presentation.
 - Product-owned SVG rating faces with consistent rendering across browsers and devices.
+- Five selectable, product-owned SVG face sets: heard (the existing default), clay, glass, minimal, and retro.
+- Campaigns persist their selected face set and use it consistently in the builder preview and public guest survey.
 - A visible `Change my rating` action before submission.
 - One final screen for feedback, optional public review links, and contact capture.
 - Completion language based on the visible selected feeling rather than an unseen number.
@@ -44,7 +46,7 @@ Demo submissions add:
 
 ## Data model
 
-No migration is required. Contact fields already belong to `feedback_sessions` and `feedback_responses`; lead attribution and follow-up preference are intentionally scoped to response metadata until a real CRM integration exists.
+Contact fields already belong to `feedback_sessions` and `feedback_responses`; lead attribution and follow-up preference are intentionally scoped to response metadata until a real CRM integration exists. Campaigns persist `rating_face_set`, defaulting existing and new campaigns to `heard`.
 
 ## Events emitted
 
@@ -73,12 +75,15 @@ Existing structured API errors and outbox processing logs cover submission failu
 - Server rejects malformed email and phone.
 - Production frontend build and type validation.
 - Browser checks for all rating faces at desktop and mobile widths.
+- Contract and persistence checks for every supported rating-face set and safe rejection of unknown values.
+- Campaign-builder checks for accessible face-set selection and guest-preview parity.
 - Browser checks for change-rating state preservation, inline validation, successful persistence, and lowercase branding.
 
 ## Definition of done
 
 - nom logo and colors appear in the seeded guest experience.
 - Rating faces are crisp, custom, and unclipped on every guest step.
+- Operators can select any supported SVG face set without changing the existing default.
 - Guests can change ratings before submission.
 - Contact capture and optional review links share the final step.
 - Demo contact information and lead metadata persist.

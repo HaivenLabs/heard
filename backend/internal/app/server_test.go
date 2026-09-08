@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -80,6 +81,25 @@ func TestProductionPublicWriteFailsClosedWithoutSharedLimiterStore(t *testing.T)
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want fail-closed 503", recorder.Code)
 	}
+}
+
+func TestHealthReportsIdentityOutageWithoutFailingPublicServiceLiveness(t *testing.T) {
+	server := NewServer(Config{}, nil, unavailableIdentityProvider{})
+	recorder := httptest.NewRecorder()
+	server.handleHealth(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/healthz", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"degraded"`) || !strings.Contains(recorder.Body.String(), `"identity":{"status":"unavailable"`) {
+		t.Fatalf("unexpected health response: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+type unavailableIdentityProvider struct{}
+
+func (unavailableIdentityProvider) VerifyToken(context.Context, string) (Identity, error) {
+	return Identity{}, errIdentityUnavailable
+}
+
+func (unavailableIdentityProvider) IdentityHealth() IdentityHealth {
+	return IdentityHealth{Status: "unavailable", LastRefreshFailed: true}
 }
 
 func TestClientAddressIgnoresForwardedHeaderFromUntrustedPeer(t *testing.T) {

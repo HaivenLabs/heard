@@ -11,17 +11,17 @@
 }
 
 html {
-  background: #f6efe5;
+  background: var(--hv-surface-canvas);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(203, 104, 67, 0.18), transparent 26rem),
-    radial-gradient(circle at top right, rgba(109, 125, 70, 0.16), transparent 24rem),
-    linear-gradient(180deg, #f8f3ea 0%, #f3ebdf 100%);
-  color: #111827;
+    radial-gradient(circle at top left, color-mix(in srgb, var(--hv-color-moss) 20%, transparent), transparent 26rem),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--hv-action-primary) 14%, transparent), transparent 24rem),
+    linear-gradient(180deg, var(--hv-surface-raised) 0%, var(--hv-surface-subtle) 100%);
+  color: var(--hv-text-primary);
   font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
 }
 
@@ -38,5 +38,21 @@ textarea {
 }
 
 ::selection {
-  background: rgba(203, 104, 67, 0.24);
+  background: color-mix(in srgb, var(--hv-action-primary) 32%, transparent);
+}
+
+.survey-canvas {
+  background: radial-gradient(circle at top, var(--hv-surface-raised), var(--hv-surface-subtle));
+}
+
+.brand-dot-field {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--hv-action-primary) 12%, transparent) 1px, transparent 0);
+  background-size: 28px 28px;
+}
+
+.brand-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--hv-action-primary-hover) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hv-action-primary-hover) 5%, transparent) 1px, transparent 1px);
+  background-size: 52px 52px;
 }

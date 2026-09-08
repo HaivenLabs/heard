@@ -51,7 +51,20 @@ Do not force heavyweight BDD for small deterministic utilities.
 - Use qurl for QR generation and rendering.
 - Temporary local adapters are only for documented fake/test/offline use.
 
-## 5) Done means done
+## 5) Protect environment files
+
+- Keep actual environment files out of Git with `.env`, `.env.*`, and `!.env.example` in `.gitignore`.
+- Commit only sanitized placeholders in `.env.example`.
+- If an actual environment file was tracked, remove it from Git tracking and rotate any exposed credentials.
+
+## 6) Keep browser identity origins canonical
+
+- Configure one canonical public browser origin per environment, including local, integration, staging, and production.
+- Redirect aliases before issuing OAuth, session, CSRF, PKCE, or state cookies.
+- Derive or validate OAuth callbacks, CORS, and branded return URLs against that configured origin; never use an untrusted request host to select a callback.
+- Require HTTPS and explicit configuration outside local runtimes, and add regression tests for origin/callback drift.
+
+## 7) Done means done
 
 Before completion, verify all applicable items:
 

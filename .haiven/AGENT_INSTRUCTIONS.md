@@ -160,11 +160,15 @@ If a job can fail, operators need a way to know.
 
 Never commit secrets.
 
+Every Haiven repository must ignore real environment files using `.env`, `.env.*`, and `!.env.example` in `.gitignore`. Commit only sanitized placeholders in `.env.example`; never add an actual environment file to Git. If one was tracked, remove it from tracking and rotate any exposed credentials.
+
 Never log sensitive data.
 
 Never expose raw internal IDs in public URLs when opaque tokens or slugs are more appropriate.
 
 Always enforce tenant and permission boundaries.
+
+For browser identity work, model one canonical public origin per environment. Redirect aliases before issuing OAuth or session cookies; derive or validate callback, CORS, and branded return URLs against that origin; and test the local plus deployed-environment contract. Do not rely on the incoming Host header to choose an OAuth callback.
 
 Local bypasses must be impossible to enable in production mode.
 

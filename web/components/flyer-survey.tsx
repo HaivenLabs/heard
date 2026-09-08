@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { RatingFace, RatingValue } from "./rating-face";
+import { HeardLogo } from "./heard-logo";
 import { apiFetch, FeedbackResponse, FeedbackSession, PublicSurvey } from "../lib/api";
 import { isValidEmail, isValidPhone } from "../lib/contact-validation";
 
@@ -185,74 +186,72 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#f9f4e7_0,#eef4ef_48%,#e6efec_100%)] px-4 py-5 text-[#19383a] sm:py-8">
+    <main className="survey-canvas min-h-screen px-4 py-5 text-ink sm:py-8">
       <div className="mx-auto max-w-2xl">
         <header className="mb-5 flex items-center justify-between gap-4 px-1">
           <div className="flex min-w-0 items-center gap-3">
             {survey?.campaign.logo_url || isNom ? (
-              <img alt={restaurantName} className="h-14 w-14 shrink-0 rounded-full object-cover shadow-[0_8px_24px_rgba(63,105,107,0.2)]" height="56" src={survey?.campaign.logo_url || "/brands/nom/logo.png"} width="56" />
+              <img alt={restaurantName} className="h-14 w-14 shrink-0 rounded-full object-cover shadow-soft" height="56" src={survey?.campaign.logo_url || "/brands/nom/logo.png"} width="56" />
             ) : (
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#416a6c] font-display text-xl font-bold lowercase text-[#f8f0dc]">{restaurantName.slice(0, 1)}</span>
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary font-display text-xl font-bold lowercase text-parchment">{restaurantName.slice(0, 1)}</span>
             )}
             <div className="min-w-0">
-              <p className="truncate font-body text-sm font-semibold lowercase tracking-[0.08em] text-[#416a6c]">{restaurantName}</p>
-              <h1 className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-[#19383a]">{survey?.campaign.headline ?? "How did we do?"}</h1>
+              <p className="truncate font-body text-sm font-semibold lowercase tracking-[0.08em] text-primary">{restaurantName}</p>
+              <h1 className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-ink">{survey?.campaign.headline ?? "How did we do?"}</h1>
             </div>
           </div>
-          <Link className="shrink-0 rounded-full border border-[#416a6c]/20 bg-white/70 px-4 py-2 font-body text-sm font-semibold lowercase text-[#416a6c] backdrop-blur transition hover:border-[#416a6c]/45" href="/">
-            heard<span className="text-[#ed6c5b]">.</span>
-          </Link>
+          <Link aria-label="heard home" className="shrink-0 rounded-full border border-primary/20 bg-white/70 px-3 py-1.5 backdrop-blur transition hover:border-primary/45" href="/"><HeardLogo className="scale-75 origin-right" /></Link>
         </header>
 
-        <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/88 shadow-[0_28px_80px_rgba(38,77,78,0.15)] backdrop-blur">
+        <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/88 shadow-soft backdrop-blur">
           {step === "rate" ? (
             <div className="p-5 sm:p-8">
-              <p className="font-body text-base leading-7 text-[#496567]">{survey?.campaign.prompt ?? "Tap the face that matches your visit."}</p>
+              <p className="font-body text-base leading-7 text-ink/65">{survey?.campaign.prompt ?? "Tap the face that matches your visit."}</p>
               <div className="mt-7 grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3">
                 {ratings.map((item) => (
                   <button
                     aria-label={`${item.label}, ${item.value} out of 5`}
-                    className={`group min-w-0 rounded-2xl border px-2 py-3 transition sm:rounded-[1.4rem] ${rating === item.value ? "border-[#416a6c] bg-[#e7f0ec] ring-4 ring-[#416a6c]/10" : "border-[#dce8e3] bg-[#fbfaf5] hover:-translate-y-1 hover:border-[#416a6c]/45 hover:bg-white"}`}
+                    className={`group min-w-0 rounded-2xl border px-2 py-3 transition sm:rounded-[1.4rem] ${rating === item.value ? "border-primary bg-mist ring-4 ring-primary/10" : "border-sand bg-parchment hover:-translate-y-1 hover:border-primary/45 hover:bg-white"}`}
                     key={item.value}
                     onClick={() => chooseRating(item.value)}
                     type="button"
                   >
-                    <RatingFace className="mx-auto w-full max-w-[4.8rem] overflow-visible drop-shadow-[0_7px_8px_rgba(25,56,58,0.12)]" rating={item.value} />
-                    <span className="mt-1 block min-h-8 font-body text-[11px] font-semibold leading-4 text-[#496567] sm:min-h-0 sm:text-xs">{item.label}</span>
+                    <RatingFace className="mx-auto w-full max-w-[4.8rem] overflow-visible drop-shadow-sm" faceSet={survey?.campaign?.rating_face_set ?? "heard"} rating={item.value} />
+                    <span className="mt-1 block min-h-8 font-body text-[11px] font-semibold leading-4 text-ink/65 sm:min-h-0 sm:text-xs">{item.label}</span>
                   </button>
                 ))}
               </div>
-              <p className="mt-7 rounded-2xl bg-[#f8f0dc] px-4 py-3 font-body text-sm font-semibold leading-6 text-[#6c5844]">{survey?.campaign.incentive_text}</p>
+              <p className="mt-7 rounded-2xl bg-parchment px-4 py-3 font-body text-sm font-semibold leading-6 text-ink">{survey?.campaign.incentive_text}</p>
             </div>
           ) : null}
 
           {step === "details" && selectedRating ? (
             <form noValidate onSubmit={submitSurvey}>
-              <div className="border-b border-[#dce8e3] bg-[#f8f0dc]/65 px-5 py-5 sm:px-8">
-                <button className="inline-flex items-center gap-2 font-body text-sm font-semibold text-[#416a6c] transition hover:text-[#19383a]" onClick={changeRating} type="button">
+              <div className="border-b border-sand bg-parchment/65 px-5 py-5 sm:px-8">
+                <button className="inline-flex items-center gap-2 font-body text-sm font-semibold text-primary transition hover:text-spruce" onClick={changeRating} type="button">
                   <span aria-hidden="true">←</span> Change my rating
                 </button>
               </div>
 
               <div className="p-5 sm:p-8">
                 <div className="grid items-center gap-5 sm:grid-cols-[7rem_1fr]">
-                  <RatingFace className="mx-auto w-28 overflow-visible drop-shadow-[0_12px_14px_rgba(25,56,58,0.14)]" rating={selectedRating.value} />
+                  <RatingFace className="mx-auto w-28 overflow-visible drop-shadow-md" faceSet={survey?.campaign?.rating_face_set ?? "heard"} rating={selectedRating.value} />
                   <div className="text-center sm:text-left">
-                    <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-[#ed6c5b]">Thank you for rating us</p>
-                    <h2 className="mt-2 font-display text-3xl font-semibold tracking-[-0.045em] text-[#19383a]">{selectedRating.label}.</h2>
-                    <p className="mt-2 font-body text-sm leading-6 text-[#597173]">{selectedRating.prompt}</p>
+                    <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-spruce">Thank you for rating us</p>
+                    <h2 className="mt-2 font-display text-3xl font-semibold tracking-[-0.045em] text-ink">{selectedRating.label}.</h2>
+                    <p className="mt-2 font-body text-sm leading-6 text-ink/60">{selectedRating.prompt}</p>
                   </div>
                 </div>
 
                 {isFiveStar ? (
-                  <div className="mt-7 rounded-[1.5rem] border border-[#dce8e3] bg-[#f5faf7] p-5">
+                  <div className="mt-7 rounded-[1.5rem] border border-sand bg-surface p-5">
                     <h3 className="font-display text-xl font-semibold tracking-[-0.025em]">Would you share the love?</h3>
-                    <p className="mt-1 font-body text-sm leading-6 text-[#597173]">A public review helps more people discover {restaurantName}. This is optional, and you can finish below without leaving a review.</p>
+                    <p className="mt-1 font-body text-sm leading-6 text-ink/60">A public review helps more people discover {restaurantName}. This is optional, and you can finish below without leaving a review.</p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <a className="rounded-full bg-[#416a6c] px-4 py-3 text-center font-body text-sm font-semibold text-white transition hover:bg-[#315759]" href={googleReviewUrl} onClick={() => trackReviewClick("google")} rel="noreferrer" target="_blank">
+                      <a className="rounded-full bg-primary px-4 py-3 text-center font-body text-sm font-semibold text-white transition hover:bg-spruce" href={googleReviewUrl} onClick={() => trackReviewClick("google")} rel="noreferrer" target="_blank">
                         Review on Google
                       </a>
-                      <a className="rounded-full border border-[#416a6c]/25 bg-white px-4 py-3 text-center font-body text-sm font-semibold text-[#416a6c] transition hover:border-[#416a6c]/55" href={yelpReviewUrl} onClick={() => trackReviewClick("yelp")} rel="noreferrer" target="_blank">
+                      <a className="rounded-full border border-primary/25 bg-white px-4 py-3 text-center font-body text-sm font-semibold text-primary transition hover:border-primary/55" href={yelpReviewUrl} onClick={() => trackReviewClick("yelp")} rel="noreferrer" target="_blank">
                         Review on Yelp
                       </a>
                     </div>
@@ -260,13 +259,13 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
                 ) : (
                   <div className="mt-7">
                     <label className="block">
-                      <span className="mb-2 block font-body text-sm font-semibold text-[#294b4d]">What would have made your visit better?</span>
-                      <textarea className="min-h-28 w-full rounded-2xl border border-[#cbdcd6] bg-[#fbfdfb] px-4 py-3 font-body text-base outline-none transition placeholder:text-[#7b9391] focus:border-[#416a6c] focus:ring-4 focus:ring-[#416a6c]/10" onChange={(event) => setComment(event.target.value)} placeholder="Tell the team what happened..." value={comment} />
+                      <span className="mb-2 block font-body text-sm font-semibold text-ink">What would have made your visit better?</span>
+                      <textarea className="min-h-28 w-full rounded-2xl border border-sand bg-surface px-4 py-3 font-body text-base outline-none transition placeholder:text-ink/45 focus:border-primary focus:ring-4 focus:ring-primary/10" onChange={(event) => setComment(event.target.value)} placeholder="Tell the team what happened..." value={comment} />
                     </label>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {issueTags.map((tag) => (
                         <button
-                          className={`rounded-full border px-4 py-2 font-body text-sm font-semibold transition ${selectedTags.includes(tag) ? "border-[#416a6c] bg-[#e4efeb] text-[#315759]" : "border-[#cbdcd6] bg-white text-[#597173] hover:border-[#416a6c]/50"}`}
+                          className={`rounded-full border px-4 py-2 font-body text-sm font-semibold transition ${selectedTags.includes(tag) ? "border-primary bg-mist text-spruce" : "border-sand bg-white text-ink/60 hover:border-primary/50"}`}
                           key={tag}
                           onClick={() => setSelectedTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]))}
                           type="button"
@@ -278,10 +277,10 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
                   </div>
                 )}
 
-                <div className="mt-8 border-t border-[#dce8e3] pt-7">
-                  <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-[#ed6c5b]">One last thing</p>
+                <div className="mt-8 border-t border-sand pt-7">
+                  <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-spruce">One last thing</p>
                   <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-0.035em]">Where should we reach you?</h3>
-                  <p className="mt-2 font-body text-sm leading-6 text-[#597173]">Add an email or phone number for the giveaway and any follow-up about your experience.</p>
+                  <p className="mt-2 font-body text-sm leading-6 text-ink/60">Add an email or phone number for the giveaway and any follow-up about your experience.</p>
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <Field autoComplete="name" label="Name" onChange={setGuestName} placeholder="Your name" value={guestName} />
@@ -290,23 +289,23 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
                   </div>
 
                   {isDemo ? (
-                    <div className="mt-4 rounded-2xl border border-[#ed6c5b]/20 bg-[#fff7f2] p-4">
-                      <p className="font-body text-sm leading-6 text-[#6f5148]">Because this is the heard demo, the contact details you submit are saved so we can understand who tried the experience.</p>
-                      <label className="mt-3 flex gap-3 font-body text-sm leading-6 text-[#4f4944]">
-                        <input checked={heardFollowUp} className="mt-1 h-4 w-4 accent-[#416a6c]" onChange={(event) => setHeardFollowUp(event.target.checked)} type="checkbox" />
+                    <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-50 p-4">
+                      <p className="font-body text-sm leading-6 text-ink/70">Because this is the heard demo, the contact details you submit are saved so we can understand who tried the experience.</p>
+                      <label className="mt-3 flex gap-3 font-body text-sm leading-6 text-ink/70">
+                        <input checked={heardFollowUp} className="mt-1 h-4 w-4 accent-primary" onChange={(event) => setHeardFollowUp(event.target.checked)} type="checkbox" />
                         I&apos;d like the heard team to follow up about using this at my restaurant. <span className="font-semibold">Optional.</span>
                       </label>
                     </div>
                   ) : (
-                    <label className="mt-4 flex gap-3 rounded-2xl bg-[#f2f6f4] px-4 py-3 font-body text-sm leading-6 text-[#425e60]">
-                      <input checked={marketingConsent} className="mt-1 h-4 w-4 accent-[#416a6c]" onChange={(event) => setMarketingConsent(event.target.checked)} type="checkbox" />
+                    <label className="mt-4 flex gap-3 rounded-2xl bg-parchment px-4 py-3 font-body text-sm leading-6 text-ink/65">
+                      <input checked={marketingConsent} className="mt-1 h-4 w-4 accent-primary" onChange={(event) => setMarketingConsent(event.target.checked)} type="checkbox" />
                       Send me future offers from {restaurantName}.
                     </label>
                   )}
 
                   {error ? <div aria-live="assertive" className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700" role="alert">{error}</div> : null}
 
-                  <button className="mt-5 h-[3.25rem] w-full rounded-full bg-[#416a6c] px-5 py-3.5 font-body text-sm font-bold text-white shadow-[0_12px_26px_rgba(65,106,108,0.24)] transition hover:-translate-y-0.5 hover:bg-[#315759] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy} type="submit">
+                  <button className="mt-5 h-[3.25rem] w-full rounded-full bg-primary px-5 py-3.5 font-body text-sm font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:bg-spruce disabled:cursor-not-allowed disabled:opacity-60" disabled={busy} type="submit">
                     {busy ? "Saving your response..." : isDemo ? "Finish the demo" : "Finish survey"}
                   </button>
                 </div>
@@ -316,10 +315,10 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
 
           {step === "done" && submitted && selectedRating ? (
             <div className="p-7 text-center sm:p-10">
-              <RatingFace className="mx-auto w-32 overflow-visible drop-shadow-[0_14px_16px_rgba(25,56,58,0.16)]" rating={selectedRating.value} />
-              <p className="mt-5 font-body text-xs font-bold uppercase tracking-[0.2em] text-[#ed6c5b]">Response received</p>
+              <RatingFace className="mx-auto w-32 overflow-visible drop-shadow-md" faceSet={survey?.campaign?.rating_face_set ?? "heard"} rating={selectedRating.value} />
+              <p className="mt-5 font-body text-xs font-bold uppercase tracking-[0.2em] text-spruce">Response received</p>
               <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.045em]">Thank you for rating us {selectedRating.label.toLowerCase()}.</h2>
-              <p className="mx-auto mt-3 max-w-md font-body text-sm leading-7 text-[#597173]">
+              <p className="mx-auto mt-3 max-w-md font-body text-sm leading-7 text-ink/60">
                 {isDemo
                   ? heardFollowUp
                     ? "Your demo response and contact details are saved. The heard team can follow up about bringing this experience to your restaurant."
@@ -329,7 +328,7 @@ export function FlyerSurvey({ resolve }: { resolve: FlyerSurveyResolve }) {
                     : `You are entered. Thanks for helping other guests discover ${restaurantName}.`}
               </p>
               {isDemo ? (
-                <Link className="mt-7 inline-flex rounded-full bg-[#416a6c] px-6 py-3 font-body text-sm font-bold lowercase text-white transition hover:bg-[#315759]" href={"/start?source=guest_demo" as Route}>
+                <Link className="mt-7 inline-flex rounded-full bg-primary px-6 py-3 font-body text-sm font-bold lowercase text-white transition hover:bg-spruce" href={"/start?source=guest_demo" as Route}>
                   start using heard
                 </Link>
               ) : null}
@@ -362,10 +361,10 @@ function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-2 block font-body text-sm font-semibold text-[#294b4d]">{label}</span>
+      <span className="mb-2 block font-body text-sm font-semibold text-ink">{label}</span>
       <input
         autoComplete={autoComplete}
-        className="h-12 w-full rounded-2xl border border-[#cbdcd6] bg-[#fbfdfb] px-4 font-body text-base outline-none transition placeholder:text-[#7b9391] focus:border-[#416a6c] focus:ring-4 focus:ring-[#416a6c]/10"
+        className="h-12 w-full rounded-2xl border border-sand bg-surface px-4 font-body text-base outline-none transition placeholder:text-ink/45 focus:border-primary focus:ring-4 focus:ring-primary/10"
         inputMode={inputMode}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

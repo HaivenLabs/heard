@@ -21,6 +21,7 @@ export default function LoginPage() {
     if (notice === "cancelled") setError("Google sign-in was canceled. You can try again whenever you're ready.");
     if (notice === "provider_error") setError("Google sign-in could not be completed. Please try again.");
     if (notice === "session_expired") setError("Your sign-in window expired. Please try again.");
+    if (notice === "service_unavailable") setError("Sign-in is temporarily unavailable. Please try again in a moment.");
   }, []);
 
   async function continueWithEmail(event: FormEvent<HTMLFormElement>) {
@@ -49,8 +50,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f1e6] text-ink">
-      <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_1px_1px,rgba(23,37,29,0.12)_1px,transparent_0)] [background-size:28px_28px]" />
+    <main className="relative min-h-screen overflow-hidden bg-parchment text-ink">
+      <div className="brand-dot-field pointer-events-none absolute inset-0 opacity-40" />
       <div className="relative"><PublicHeader /></div>
       <div className="relative mx-auto grid min-h-[calc(100vh-7rem)] max-w-7xl items-center gap-14 px-6 pb-16 pt-8 lg:grid-cols-[1.05fr_0.8fr]">
         <section>
@@ -63,7 +64,7 @@ export default function LoginPage() {
           </p>
         </section>
 
-        <section className="rounded-[2rem] border border-ink/10 bg-[#fffdf8] p-7 shadow-[0_32px_90px_rgba(23,37,29,0.16)] sm:p-10">
+        <section className="rounded-[2rem] border border-ink/10 bg-surface p-7 shadow-[0_32px_90px_rgba(9,40,21,0.16)] sm:p-10">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="font-body text-xs tracking-[0.16em] text-clay">Customer sign in</p>
@@ -71,13 +72,13 @@ export default function LoginPage() {
             </div>
           </div>
           <p className="mt-4 font-body text-sm leading-6 text-ink/58">Choose Google or sign in securely with your email and password.</p>
-          <button className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-white px-6 font-display text-sm font-semibold text-ink transition hover:border-clay/50 hover:bg-[#fffdf8] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy} onClick={continueWithGoogle} type="button"><span aria-hidden="true" className="font-body text-lg font-bold text-[#4285f4]">G</span>Continue with Google</button>
+          <button className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-white px-6 font-display text-sm font-semibold text-ink transition hover:border-teal/50 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-55" disabled={busy} onClick={continueWithGoogle} type="button"><span aria-hidden="true" className="font-body text-lg font-bold text-primary">G</span>Continue with Google</button>
           <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-ink/35"><span className="h-px flex-1 bg-ink/10" />Or sign in with email and password<span className="h-px flex-1 bg-ink/10" /></div>
           {error ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</p> : null}
           <form className="mt-5" onSubmit={continueWithEmail}>
             <label className="block"><span className="mb-2 block font-body text-sm font-semibold">Work email</span><input autoComplete="email" className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" name="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@restaurant.com" required type="email" value={email} /></label>
             <label className="mt-4 block"><span className="mb-2 block font-body text-sm font-semibold">Password</span><input autoComplete="current-password" className="h-14 w-full rounded-2xl border border-ink/15 bg-white px-4 font-body outline-none transition placeholder:text-ink/30 focus:border-clay focus:ring-4 focus:ring-clay/10" name="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label>
-            <button className="mt-6 flex h-14 w-full items-center justify-center rounded-full bg-clay px-6 font-display text-sm font-semibold tracking-[0.04em] text-white transition hover:bg-[#b95635] disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">{busy ? "Signing in..." : "Sign in"}</button>
+            <button className="mt-6 flex h-14 w-full items-center justify-center rounded-full bg-primary px-6 font-display text-sm font-semibold tracking-[0.04em] text-white transition hover:bg-spruce disabled:cursor-wait disabled:opacity-65" disabled={busy} type="submit">{busy ? "Signing in..." : "Sign in"}</button>
           </form>
           <p className="mt-6 text-center font-body text-sm leading-6 text-ink/48">New to heard? <Link className="font-semibold text-clay underline decoration-clay/35 underline-offset-4" href={"/start?source=direct" as Route}>Create your account.</Link></p>
         </section>

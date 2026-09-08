@@ -189,6 +189,24 @@ each repository.
 
 Products should feel related, but not identical.
 
+### Green product lanes
+
+The Haiven Labs mark defines the canonical green family. Each product starts
+with one of its three mark greens, then composes its semantic theme through
+`@haiven/design-tokens`; product applications must not copy these raw values
+into local palettes.
+
+| Lane | Products | Anchor green | Temperament |
+| --- | --- | --- | --- |
+| Consumer | qurl | `#62A48F` | inviting, expressive, approachable |
+| Business | Heard, Haiven, Compass | `#137F6B` | clear, capable, operational |
+| Infrastructure | Passage | `#12372F` | secure, quiet, foundational |
+
+`#092815` is the shared deepest supporting green, used for strong states and
+depth rather than as Heard's primary action color. The tokens also define the
+required contrast-safe foreground and focus color for each lane; use those
+semantic roles instead of choosing foreground colors ad hoc.
+
 Passage should feel simple, secure, and frictionless.
 
 qurl should feel creative, fast, visual, and trustworthy.

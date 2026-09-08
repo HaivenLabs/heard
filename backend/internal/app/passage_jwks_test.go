@@ -131,13 +131,13 @@ func TestPassageVerifierFailsClosedWhenJWKSUnavailable(t *testing.T) {
 	}
 }
 
-func TestPassageVerifierUsesFreshCacheButFailsAfterCacheExpiry(t *testing.T) {
+func TestPassageVerifierUsesBoundedStaleCacheDuringPassageOutage(t *testing.T) {
 	now := time.Now().UTC()
 	clock := now
 	keys := &rotatingKeys{}
 	keys.rotate()
 	server := httptest.NewServer(http.HandlerFunc(keys.serve))
-	p, err := newPassageJWKSProvider(Config{AppEnv: "test", PassageBaseURL: server.URL, PassageIssuer: "https://passage.test", PassageAudience: "heard", PassageJWKSCacheSeconds: 1}, nil, func() time.Time { return clock })
+	p, err := newPassageJWKSProvider(Config{AppEnv: "test", PassageBaseURL: server.URL, PassageIssuer: "https://passage.test", PassageAudience: "heard", PassageJWKSCacheSeconds: 1, PassageJWKSStaleSeconds: 5}, nil, func() time.Time { return clock })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,9 +150,93 @@ func TestPassageVerifierUsesFreshCacheButFailsAfterCacheExpiry(t *testing.T) {
 		t.Fatalf("fresh cache rejected: %v", err)
 	}
 	clock = clock.Add(2 * time.Second)
-	if _, err = p.VerifyToken(context.Background(), token); err == nil {
-		t.Fatal("stale cache survived JWKS outage")
+	if _, err = p.VerifyToken(context.Background(), token); err != nil {
+		t.Fatalf("bounded stale cache rejected an unexpired session: %v", err)
 	}
+	if health := p.IdentityHealth(); health.Status != "degraded" || !health.LastRefreshFailed {
+		t.Fatalf("unexpected outage health: %#v", health)
+	}
+	clock = clock.Add(5 * time.Second)
+	if _, err = p.VerifyToken(context.Background(), token); !errors.Is(err, errIdentityUnavailable) {
+		t.Fatalf("stale cache survived its bounded outage window: %v", err)
+	}
+}
+
+func TestPassageVerifierRejectsExpiredTokenDuringStaleKeyFallback(t *testing.T) {
+	now := time.Now().UTC()
+	clock := now
+	keys := &rotatingKeys{}
+	keys.rotate()
+	server := httptest.NewServer(http.HandlerFunc(keys.serve))
+	p, err := newPassageJWKSProvider(Config{AppEnv: "test", PassageBaseURL: server.URL, PassageIssuer: "https://passage.test", PassageAudience: "heard", PassageJWKSCacheSeconds: 1, PassageJWKSStaleSeconds: 60}, nil, func() time.Time { return clock })
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := baseClaims(now)
+	claims["exp"] = now.Add(time.Second).Unix()
+	token := keys.token(t, claims)
+	if _, err = p.VerifyToken(context.Background(), token); err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+	clock = clock.Add(2 * time.Second)
+	if _, err = p.VerifyToken(context.Background(), token); !errors.Is(err, errInvalidToken) {
+		t.Fatalf("expired token accepted during identity outage: %v", err)
+	}
+}
+
+func TestPassageHealthProbeReportsUnavailableIdentityWithoutKeys(t *testing.T) {
+	p, err := newPassageJWKSProvider(Config{AppEnv: "test", PassageBaseURL: "http://127.0.0.1:1", PassageIssuer: "https://passage.test", PassageAudience: "heard", PassageJWKSCacheSeconds: 60, PassageJWKSStaleSeconds: 60}, &http.Client{Timeout: 10 * time.Millisecond}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.RefreshIdentityHealth(context.Background())
+	if health := p.IdentityHealth(); health.Status != "unavailable" || !health.LastRefreshFailed {
+		t.Fatalf("unexpected initial outage health: %#v", health)
+	}
+}
+
+func TestPassageVerifierRestoresBoundedPublicKeyCacheAfterRestart(t *testing.T) {
+	now := time.Now().UTC()
+	keys := &rotatingKeys{}
+	keys.rotate()
+	server := httptest.NewServer(http.HandlerFunc(keys.serve))
+	cache := &memoryIdentityJWKSCache{}
+	config := Config{AppEnv: "test", PassageBaseURL: server.URL, PassageIssuer: "https://passage.test", PassageAudience: "heard", PassageJWKSCacheSeconds: 60, PassageJWKSStaleSeconds: 60}
+	first, err := newPassageJWKSProvider(config, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.InitializeIdentityCache(context.Background(), cache)
+	token := keys.token(t, baseClaims(now))
+	if _, err = first.VerifyToken(context.Background(), token); err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+
+	restarted, err := newPassageJWKSProvider(config, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.InitializeIdentityCache(context.Background(), cache)
+	if _, err = restarted.VerifyToken(context.Background(), token); err != nil {
+		t.Fatalf("restored public key cache rejected valid session: %v", err)
+	}
+}
+
+type memoryIdentityJWKSCache struct {
+	record IdentityJWKSCacheRecord
+	found  bool
+}
+
+func (c *memoryIdentityJWKSCache) LoadIdentityJWKS(_ context.Context, _ string) (IdentityJWKSCacheRecord, bool, error) {
+	return c.record, c.found, nil
+}
+
+func (c *memoryIdentityJWKSCache) SaveIdentityJWKS(_ context.Context, record IdentityJWKSCacheRecord) error {
+	c.record = record
+	c.found = true
+	return nil
 }
 
 func TestProductionRequiresRemotePassage(t *testing.T) {

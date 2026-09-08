@@ -7,6 +7,7 @@ import { AuthGate } from "../../components/auth-gate";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
+    <div data-haiven-product="heard">
     <AuthGate requireOnboardingComplete>
       {(session) => (
         <AdminSessionProvider session={session}>
@@ -14,5 +15,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </AdminSessionProvider>
       )}
     </AuthGate>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import "../packages/design-tokens/src/tokens.css";
 import "./globals.css";
 import type { Metadata } from "next";
 
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-haiven-product="heard">
       <body>{children}</body>
     </html>
   );

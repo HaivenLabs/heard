@@ -17,9 +17,15 @@ func main() {
 	if err := cfg.ValidateAPI(); err != nil {
 		log.Fatalf("invalid runtime configuration: %v", err)
 	}
-	ctx := context.Background()
-	if err := app.ConfigurePassageGoogle(ctx, cfg, &http.Client{Timeout: 10 * time.Second}); err != nil {
-		log.Fatalf("configure Google sign-in: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	providerClient := &http.Client{Timeout: 10 * time.Second}
+	if err := app.ConfigurePassageGoogle(ctx, cfg, providerClient); err != nil {
+		// A Passage outage must not take down public guest-feedback routes or
+		// already authenticated sessions. Retry the durable configuration while
+		// this instance remains healthy.
+		log.Printf("identity provider configuration is temporarily unavailable: %v", err)
+		go retryIdentityProviderConfiguration(ctx, cfg, providerClient)
 	}
 
 	store, err := app.NewStore(ctx, cfg)
@@ -40,6 +46,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure Passage identity provider: %v", err)
 	}
+	app.InitializeIdentityCache(ctx, identity, store)
 
 	server := app.NewServer(cfg, store, identity)
 	httpServer := &http.Server{
@@ -67,5 +74,23 @@ func main() {
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
+	}
+}
+
+func retryIdentityProviderConfiguration(ctx context.Context, cfg app.Config, client *http.Client) {
+	for {
+		timer := time.NewTimer(30 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if err := app.ConfigurePassageGoogle(ctx, cfg, client); err != nil {
+			log.Printf("identity provider configuration retry failed: %v", err)
+			continue
+		}
+		log.Printf("identity provider configuration restored")
+		return
 	}
 }
