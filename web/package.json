@@ -10,7 +10,7 @@
     "test": "node --test scripts/canonical-app-origin.test.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/contact-validation.test.mjs && node scripts/check-rating-face-usage.mjs && node scripts/check-admin-shell-usage.mjs && node scripts/check-homepage-conversion.mjs && node scripts/check-brand-language.mjs && node scripts/check-brand-theme.mjs && node scripts/check-demo-review-destinations.mjs && node scripts/check-guest-feedback-journey.mjs && node scripts/check-walkthrough-journey.mjs && node scripts/check-self-service-onboarding.mjs && node scripts/check-security-boundaries.mjs"
   },
   "dependencies": {
-    "next": "16.3.1",
+    "next": "16.3.4",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
