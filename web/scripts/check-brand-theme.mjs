@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -26,17 +27,28 @@ assert.ok(existsSync(logoPath), "The Heard logo asset must be included with the 
 const logoSource = readFileSync(logoPath, "utf8");
 assert.match(logoSource, /<svg\b/i);
 assert.doesNotMatch(logoSource, /<script\b/i);
-assert.match(logoSource, new RegExp(heardTheme.accentStrong, "i"));
-assert.match(logoSource, new RegExp(heardTheme.accent, "i"));
-assert.match(logoSource, new RegExp(heardTheme.tint, "i"));
+assert.equal(
+  createHash("sha256").update(readFileSync(logoPath)).digest("hex"),
+  "a2db25103790a80ca05d685a9f461f3c1758e5441582ace1da731a8c52b01ad0",
+  "The Heard logo asset must remain an exact copy of the supplied source file."
+);
+function logoFill(className) {
+  const match = logoSource.match(new RegExp(`\\.${className}\\s*\\{fill:([#][0-9A-F]{6})`, "i"));
+  assert.ok(match, `The supplied logo must define a ${className} fill.`);
+  return match[1].toLowerCase();
+}
+const logoTint = logoFill("fil1");
+const logoPrimary = logoFill("fil3");
+const logoStrong = logoFill("fil2");
+assert.equal(heardTheme.accent, logoPrimary);
+assert.equal(heardTheme.accentStrong, logoStrong);
+assert.equal(heardTheme.focus, logoPrimary);
+assert.equal(heardTheme.tint, logoTint);
 assert.match(logoComponent, /heard-logo\.svg/);
 assert.match(publicHeader, /HeardLogo/);
 assert.match(adminShell, /HeardLogo/);
-assert.match(brandDoc, /three greens in the logo/i);
-assert.match(brandDoc, /business-facing products/i);
-assert.equal(heardTheme.accent, tokens.product.haiven.accent);
-assert.equal(heardTheme.accentStrong, tokens.product.passage.accent);
-assert.equal(heardTheme.tint, tokens.product.qurl.accent);
+assert.match(brandDoc, /exact greens in its supplied vector logo/i);
+assert.match(brandDoc, /business-facing operational energy/i);
 
 if (existsSync(centralTokenJsonPath) && existsSync(centralTokenCssPath)) {
   assert.equal(
@@ -51,4 +63,4 @@ if (existsSync(centralTokenJsonPath) && existsSync(centralTokenCssPath)) {
   );
 }
 
-console.log("Heard logo asset and green brand theme token snapshot verified.");
+console.log("Exact Heard logo asset and green brand theme token snapshot verified.");

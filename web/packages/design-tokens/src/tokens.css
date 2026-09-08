@@ -100,7 +100,7 @@
     --hv-art-3d1810: #3d1810;
     --hv-art-f87185: #f87185;
     --hv-tint-haiven: #62a48f;
-    --hv-tint-heard: #62a48f;
+    --hv-tint-heard: #64a48e;
     --hv-tint-qurl: #62a48f;
     --hv-tint-passage: #137f6b;
     --hv-tint-compass: #62a48f;
@@ -167,14 +167,14 @@
   }
 
   :where([data-haiven-product="heard"]) {
-    --hv-action-primary: #137f6b;
-    --hv-action-primary-rgb: 19 127 107;
-    --hv-action-primary-hover: #12372f;
-    --hv-action-primary-hover-rgb: 18 55 47;
+    --hv-action-primary: #157f6b;
+    --hv-action-primary-rgb: 21 127 107;
+    --hv-action-primary-hover: #17372f;
+    --hv-action-primary-hover-rgb: 23 55 47;
     --hv-action-primary-soft: #dcefe4;
     --hv-action-primary-soft-rgb: 220 239 228;
     --hv-action-primary-foreground: #ffffff;
-    --hv-color-focus: #137f6b;
+    --hv-color-focus: #157f6b;
   }
 
   :where([data-haiven-product="qurl"]) {

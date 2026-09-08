@@ -1,24 +1,24 @@
 # Heard brand theme
 
-Heard lives in the middle green lane of the Haiven Labs logo family.
+Heard's palette is anchored to the exact greens in its supplied vector logo.
 
 Shared product surfaces use this palette:
 
-- primary: `#137F6B` for primary actions, navigation, and high-emphasis text;
-- spruce: `#12372F` for hover and deep supporting surfaces;
-- teal: `#137F6B` for interactive secondary emphasis and positive status;
-- sage: `#62A48F` for restrained highlights and supporting accents;
+- primary: `#157F6B` for primary actions, navigation, and high-emphasis text;
+- spruce: `#17372F` for hover and deep supporting surfaces;
+- teal: `#157F6B` for interactive secondary emphasis and positive status;
+- sage: `#64A48E` for restrained highlights and supporting accents;
 - paper: `#F8FCF7`, `#F3F8F4`, and `#F4FAF5` for light surfaces and backgrounds.
 
-Haiven Labs product themes should start from one of the three greens in the logo,
-then build the rest of the surface language around that anchor instead of adding
-unrelated accent families. The logo greens are:
+Haiven Labs product themes should start from the exact greens in their product
+logo, then build the rest of the surface language around that anchor instead of
+adding unrelated accent families. Heard's logo greens are:
 
-- darkest: `#12372F` for infrastructure and platform-heavy surfaces;
-- middle: `#137F6B` for business-facing products that need calm operational energy;
-- lightest: `#62A48F` for consumer-facing products that should feel lighter and more welcoming.
+- darkest: `#17372F` for deep supporting surfaces;
+- middle: `#157F6B` for business-facing operational energy;
+- lightest: `#64A48E` for restrained highlights and welcoming support.
 
-Heard should stay in the middle-green lane with `#137F6B` as the primary UI
+Heard should stay in the middle-green lane with `#157F6B` as the primary UI
 anchor. Supporting colors should remain adjacent to that family so the brand
 reads as one system, not a collection of unrelated palettes.
 
