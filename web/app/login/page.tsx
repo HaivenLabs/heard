@@ -5,6 +5,7 @@ import type { Route } from "next";
 import { FormEvent, useEffect, useState } from "react";
 import { availableIdentityProviders, identityAuthStartUrl, loginHeardAccount, safeReturnTo } from "../../lib/api";
 import { useRouter } from "next/navigation";
+import { BrandBackdrop } from "../../components/brand-backdrop";
 import { PublicHeader } from "../../components/public-header";
 
 export default function LoginPage() {
@@ -51,7 +52,7 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-parchment text-ink">
-      <div className="brand-dot-field pointer-events-none absolute inset-0 opacity-40" />
+      <BrandBackdrop />
       <div className="relative"><PublicHeader /></div>
       <div className="relative mx-auto grid min-h-[calc(100vh-7rem)] max-w-7xl items-center gap-14 px-6 pb-16 pt-8 lg:grid-cols-[1.05fr_0.8fr]">
         <section>
@@ -67,11 +68,11 @@ export default function LoginPage() {
         <section className="rounded-[2rem] border border-ink/10 bg-surface p-7 shadow-[0_32px_90px_rgba(9,40,21,0.16)] sm:p-10">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="font-body text-xs tracking-[0.16em] text-clay">Customer sign in</p>
+              <p className="font-body text-xs font-bold uppercase tracking-[0.22em] text-olive">Customer sign in</p>
               <h2 className="mt-3 font-display text-3xl tracking-[-0.04em]">Welcome back.</h2>
             </div>
           </div>
-          <p className="mt-4 font-body text-sm leading-6 text-ink/58">Choose Google or sign in securely with your email and password.</p>
+          <p className="mt-3 font-body text-sm leading-6 text-ink/55">Choose Google or sign in securely with your email and password.</p>
           <button className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-white px-6 font-display text-sm font-semibold text-ink transition hover:border-teal/50 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-55" disabled={busy} onClick={continueWithGoogle} type="button"><span aria-hidden="true" className="font-body text-lg font-bold text-primary">G</span>Continue with Google</button>
           <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-ink/35"><span className="h-px flex-1 bg-ink/10" />Or sign in with email and password<span className="h-px flex-1 bg-ink/10" /></div>
           {error ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">{error}</p> : null}

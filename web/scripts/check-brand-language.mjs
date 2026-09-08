@@ -16,9 +16,15 @@ for (const source of [home, walkthrough]) {
 }
 
 for (const source of [login, start]) {
+  assert.match(source, /components\/brand-backdrop/);
+  assert.match(source, /<BrandBackdrop \/>/);
   assert.match(source, /components\/public-header/);
   assert.match(source, /<PublicHeader \/>/);
 }
+
+assert.match(login, /font-body text-xs font-bold uppercase tracking-\[0\.22em\] text-olive.*Customer sign in/);
+assert.match(login, /mt-3 font-body text-sm leading-6 text-ink\/55.*Choose Google/);
+assert.match(start, /font-body text-xs font-bold uppercase tracking-\[0\.22em\] text-olive.*Create your account/);
 
 assert.match(home, /<h1[^>]*>The guest experience, in your hands<\/h1>/);
 assert.match(walkthrough, /<h1[^>]*>Built for restaurant operators, by restaurant operators\.<\/h1>/);

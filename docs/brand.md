@@ -26,6 +26,11 @@ The supplied vector logo is stored at `web/public/brand/heard-logo.svg`. Shared
 headers render its mark with a readable Heard wordmark so the compact navigation
 lockup remains accessible at every viewport size.
 
+Public account creation and sign-in are one branded journey: `/start` and
+`/login` must use `BrandBackdrop`, `PublicHeader`, the same display/body font
+roles, and matching account-card hierarchy. Do not introduce route-local paper
+or typography treatments for either route.
+
 Restaurant-provided logos, campaign artwork, and semantic feedback states may
 use their own colors when needed to communicate restaurant identity or response
 meaning. They must remain visually compatible with the core green-first theme.

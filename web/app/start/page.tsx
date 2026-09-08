@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { FormEvent, useEffect, useState } from "react";
 import { availableIdentityProviders, identityAuthStartUrl, registerHeardAccount, safeReturnTo } from "../../lib/api";
+import { BrandBackdrop } from "../../components/brand-backdrop";
 import { PublicHeader } from "../../components/public-header";
 
 export default function StartPage() {
@@ -58,7 +59,7 @@ export default function StartPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-parchment text-ink">
-      <div className="brand-dot-field pointer-events-none absolute inset-0 opacity-40" />
+      <BrandBackdrop />
       <div className="relative"><PublicHeader /></div>
       <div className="relative mx-auto grid min-h-[calc(100vh-7rem)] max-w-7xl items-center gap-14 px-6 pb-16 pt-8 lg:grid-cols-[1fr_0.82fr]">
         <section>
